@@ -7,10 +7,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from connector.logging import logger
-from connector.runtimes.claude.domain.session import ClaudeSession
 from connector.runtimes.claude.domain.permissions import (
     claude_default_permission_selection_id,
 )
+from connector.runtimes.claude.domain.session import ClaudeSession
 from connector.runtimes.claude.sdk.client import (
     SdkLoader,
     build_sdk_options,
