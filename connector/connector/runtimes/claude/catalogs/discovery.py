@@ -17,6 +17,7 @@ from connector.runtimes.claude.sdk.client import (
     maybe_await,
 )
 from connector.runtimes.claude.sdk.settings import (
+    claude_settings_fingerprint,
     create_gateway_settings_file,
     remove_gateway_settings_file,
 )
@@ -36,6 +37,10 @@ class ClaudeModelDiscovery:
     This is the same list the CLI shows in `/model`, so the Web picker follows
     CLI upgrades and account entitlements instead of a hand-maintained table.
     Discovery only performs the control handshake; no prompt is sent.
+
+    The reported list also depends on the aliases the user's Claude Code
+    settings remap (see `sdk/settings.py`), so a settings change invalidates
+    the cache immediately instead of at the next TTL expiry.
     """
 
     config_values: Mapping[str, Any]
@@ -44,6 +49,7 @@ class ClaudeModelDiscovery:
     _models: tuple[dict[str, Any], ...] | None = field(default=None, init=False)
     _expires_at: float = field(default=0.0, init=False)
     _attempted: bool = field(default=False, init=False)
+    _settings_fingerprint: str | None = field(default=None, init=False)
     _inflight: asyncio.Task[tuple[dict[str, Any], ...] | None] | None = field(
         default=None,
         init=False,
@@ -58,6 +64,11 @@ class ClaudeModelDiscovery:
         return self._models or ()
 
     async def models(self) -> tuple[dict[str, Any], ...] | None:
+        fingerprint = claude_settings_fingerprint()
+        if fingerprint != self._settings_fingerprint:
+            self._settings_fingerprint = fingerprint
+            self._attempted = False
+            self._expires_at = 0.0
         if self._attempted and self.clock() < self._expires_at:
             return self._models
         if self._inflight is None:

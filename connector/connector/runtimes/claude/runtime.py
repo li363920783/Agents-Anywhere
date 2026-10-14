@@ -90,6 +90,7 @@ class ClaudeRuntime(AgentRuntime):
         self._catalogs = ClaudeCatalogReader(
             config=self.config,
             sdk_loader=self.sdk_loader,
+            host=self.host,
         )
         self._session_reader = ClaudeSessionReader(
             config=self.config,

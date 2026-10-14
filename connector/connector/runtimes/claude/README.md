@@ -84,6 +84,9 @@ connector/connector/runtimes/claude/
 
 - 已有 session 的 message payload 不携带 model/permission。model 和 permission 变化走 `update_session_selections()`。
 - selectors 必须来自 live model/permission catalogs，本地记忆只能作为 hint。
+- model catalog 优先用 Claude Code initialize 报的列表；`domain/models.py` 里的静态表只是 discovery 失败时的兜底，不要把它当成模型名来源。
+- 用户在 `~/.claude/settings.json` 的 `env` 里放进来的 `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_{FABLE,OPUS,SONNET,HAIKU}_MODEL`（cc-switch 之类工具会写）由 `sdk/settings.py` 转发给 CLI 子进程：Agent SDK 自己不读用户 settings，不转发别名就永远解析不到第三方真实模型名。runtime config 的 `environment` 优先级更高，凭据和 endpoint 不走这条路。
+- 平台会拒收 revision 不变但内容变了的 catalog，而模型列表取决于 CLI 自己的模型表和用户那套别名映射，两者都不由 runtime config revision 管辖。所以 `catalogs/reader.py` 把输入指纹存进 sync state，内容一变就把 revision 往上推；以后改目录内容不要只靠手改 `CLAUDE_MODEL_CATALOG_STATIC_REVISION`。
 - attachments 通过 `RuntimeHostClient.attachment_download()` 获取，必要时使用 `runtime_protocol.attachments` 生成本地安全路径。
 - commands 是独立 runtime operation。command 失败时不能 fallback 成普通用户消息。
 

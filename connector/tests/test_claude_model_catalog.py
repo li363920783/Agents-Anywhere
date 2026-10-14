@@ -18,8 +18,10 @@ from test_claude_runtime import (
 )
 
 from connector.runtime_protocol import RuntimeConfig, RuntimeInvalidRequestError
+from connector.runtimes.claude.catalogs.reader import CATALOG_REVISION_STATE_KEY
 from connector.runtimes.claude.domain.models import model_selection_from_selection_id
 from connector.runtimes.claude.runtime import ClaudeRuntime
+from connector.runtimes.claude.sdk import settings as claude_settings
 from connector.server.protocol import protocol_selection_id
 
 
@@ -291,5 +293,80 @@ def test_unknown_cli_selection_refreshes_after_discovery_ttl(initial_failure) ->
             assert all(instance.queries == [] for instance in discovery.instances)
         finally:
             await runtime.stop()
+
+    asyncio.run(run())
+
+
+def test_model_discovery_rereads_when_settings_mapping_changes(monkeypatch) -> None:
+    async def run():
+        host = _RecordingHost()
+        discovery = _DiscoveryClientType(server_info={"models": _CLI_MODELS})
+        runtime = _runtime_using_clients(host, [_ScheduledClaudeClient()], discovery)
+        clock = [0.0]
+        runtime._catalogs.discovery.clock = lambda: clock[0]
+        try:
+            await runtime.list_model_catalog()
+            assert discovery.created == 1
+
+            # Inside the TTL the list stays cached while the mapping is stable.
+            await runtime.list_model_catalog()
+            assert discovery.created == 1
+
+            # Switching provider rewrites the mapping, so the cached list was
+            # read under aliases that no longer apply.
+            monkeypatch.setattr(
+                claude_settings,
+                "claude_user_settings_environment",
+                lambda path=None: {"ANTHROPIC_DEFAULT_OPUS_MODEL": "example-model"},
+            )
+            discovery.server_info = {
+                "models": [{"value": "opus", "displayName": "example-model"}],
+            }
+            catalog = await runtime.list_model_catalog()
+            assert discovery.created == 2
+            assert [model.id for model in catalog.models] == ["opus"]
+        finally:
+            await runtime.stop()
+
+    asyncio.run(run())
+
+
+def test_model_catalog_revision_advances_only_when_model_sources_change() -> None:
+    async def run():
+        host = _RecordingHost()
+        discovery = _DiscoveryClientType(server_info={"models": _CLI_MODELS})
+        runtime = _runtime_using_clients(host, [_ScheduledClaudeClient()], discovery)
+        clock = [0.0]
+        runtime._catalogs.discovery.clock = lambda: clock[0]
+        try:
+            published = await runtime.list_model_catalog()
+            assert host.sync_states[CATALOG_REVISION_STATE_KEY]["offset"] == 1
+
+            # Query-scoped and repeated reads must not look like content changes.
+            assert (await runtime.list_model_catalog(query="haiku")).revision == published.revision
+            assert (await runtime.list_model_catalog()).revision == published.revision
+            assert host.sync_states[CATALOG_REVISION_STATE_KEY]["offset"] == 1
+
+            # A provider switch or CLI upgrade rewrites the list, so the next
+            # publish has to outrank the one the platform already accepted.
+            discovery.server_info = {"models": [*_CLI_MODELS, {"value": "claude-switched"}]}
+            clock[0] = 601.0
+            switched = await runtime.list_model_catalog()
+            assert switched.revision == published.revision + 1
+        finally:
+            await runtime.stop()
+
+        # The counter outlives the process, or a restart would republish a
+        # revision the platform already holds and get rejected as stale.
+        restarted_discovery = _DiscoveryClientType(
+            server_info={"models": [*_CLI_MODELS, {"value": "claude-switched"}]},
+        )
+        restarted = _runtime_using_clients(
+            host, [_ScheduledClaudeClient()], restarted_discovery,
+        )
+        try:
+            assert (await restarted.list_model_catalog()).revision == switched.revision
+        finally:
+            await restarted.stop()
 
     asyncio.run(run())
