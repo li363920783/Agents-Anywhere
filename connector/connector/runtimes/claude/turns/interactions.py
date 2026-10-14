@@ -7,7 +7,12 @@ from typing import Any
 
 from connector.runtime_protocol import (
     InputRequestValidationError,
+    RuntimeInvalidRequestError,
     RuntimeOperationResult,
+)
+from connector.runtimes.claude.domain.permissions import (
+    CLAUDE_BYPASS_PERMISSION_MODE,
+    permission_mode_from_selection_id,
 )
 from connector.runtimes.claude.domain.approvals import (
     ClaudeApprovalDecision,
@@ -149,6 +154,11 @@ class ClaudeInteractionController:
                     turn_id=turn_id,
                     tool_input=tool_input,
                     context=context,
+                )
+            elif _bypasses_tool_approval(session):
+                decision = ClaudeApprovalDecision(
+                    allowed=True,
+                    action_id=CLAUDE_BYPASS_PERMISSION_MODE,
                 )
             else:
                 decision = await self.request_tool_approval(
@@ -299,6 +309,23 @@ def _tool_use_id(context: Any) -> str | None:
     else:
         value = getattr(context, "tool_use_id", None)
     return value if isinstance(value, str) and value else None
+
+
+def _bypasses_tool_approval(session: ClaudeSession) -> bool:
+    """Whether this session's permission selection auto-approves every tool.
+
+    Claude Code auto-approves for that mode without consulting the callback,
+    but it refuses the mode outright when the Connector runs as root, so the
+    callback has to honour the selection itself.
+    """
+
+    try:
+        mode = permission_mode_from_selection_id(
+            session.selections.get("permission"),
+        )
+    except RuntimeInvalidRequestError:
+        return False
+    return mode == CLAUDE_BYPASS_PERMISSION_MODE
 
 
 def _decision_name(
