@@ -6,6 +6,7 @@ from pathlib import Path
 import claude_agent_sdk
 
 from connector.runtimes.claude.domain.session import ClaudeSession
+from connector.runtimes.claude.sdk import client as claude_client
 from connector.runtimes.claude.sdk import settings as claude_settings
 from connector.runtimes.claude.sdk.client import (
     build_sdk_options,
@@ -90,3 +91,16 @@ def test_claude_sdk_environment_lets_runtime_config_override_user_settings(
         "ANTHROPIC_MODEL": "runtime-model",
         "ANTHROPIC_DEFAULT_OPUS_MODEL": "example-model-b",
     }
+
+
+def test_cli_permission_mode_avoids_bypass_when_running_as_root(monkeypatch) -> None:
+    monkeypatch.setattr(claude_client, "_runs_as_root", lambda: True)
+
+    assert claude_client.cli_permission_mode("bypassPermissions") == "default"
+    assert claude_client.cli_permission_mode("plan") == "plan"
+
+
+def test_cli_permission_mode_keeps_bypass_off_root(monkeypatch) -> None:
+    monkeypatch.setattr(claude_client, "_runs_as_root", lambda: False)
+
+    assert claude_client.cli_permission_mode("bypassPermissions") == "bypassPermissions"
