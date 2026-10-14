@@ -9,6 +9,7 @@ from connector.runtimes.claude.domain.permissions import (
     permission_mode_from_selection_id,
 )
 from connector.runtimes.claude.domain.session import ClaudeSession
+from connector.runtimes.claude.sdk import settings
 from connector.runtimes.model_gateway import model_gateway_from_config
 
 SdkLoader = Callable[[], Any]
@@ -120,15 +121,16 @@ def build_sdk_options(
     return options_cls(**kwargs)
 
 
-def claude_sdk_environment(config_values: Mapping[str, Any]) -> dict[str, str]:
+def claude_sdk_environment(config_values: Mapping[str, Any]) -> dict[str, Any]:
     """Build explicit environment overrides for one Claude SDK subprocess."""
 
+    # The user's Claude Code settings remap model aliases to third-party
+    # models; the SDK subprocess does not read that file, so forward the model
+    # names. Runtime config still wins, and credentials stay untouched.
+    environment: dict[str, Any] = settings.claude_user_settings_environment()
     configured_environment = config_values.get("environment")
-    environment = (
-        dict(configured_environment)
-        if isinstance(configured_environment, Mapping)
-        else {}
-    )
+    if isinstance(configured_environment, Mapping):
+        environment.update(configured_environment)
     model_gateway = model_gateway_from_config(config_values.get("modelGateway"))
     if model_gateway is not None:
         environment["ANTHROPIC_BASE_URL"] = model_gateway.base_url
