@@ -2153,7 +2153,7 @@ async def _test_claude_runtime_lists_models_reported_by_claude_code() -> None:
     ]
     assert catalog.revision == 1006
     default = catalog.models[0]
-    assert default.title == "Default (recommended)"
+    assert default.title == "claude-opus-5-5[1m]"
     assert default.description == "Opus 5.5 with 1M context"
     assert default.metadata["source"] == "claude-code.initialize"
     assert default.metadata["resolvedModel"] == "claude-opus-5-5[1m]"
@@ -2161,6 +2161,9 @@ async def _test_claude_runtime_lists_models_reported_by_claude_code() -> None:
     assert [item.id for item in default.reasoning_items] == ["low", "high", "max"]
     assert default.reasoning_items[1].title == "High"
     assert catalog.models[3].reasoning_items == ()
+    # The CLI labels an entry by the alias, but the picker names the model that
+    # a selection will actually run.
+    assert catalog.models[3].title == "claude-haiku-4-5-20251001"
     assert catalog.models[4].metadata["custom"] is True
 
     await runtime.list_model_catalog(query="haiku")
@@ -2220,7 +2223,9 @@ async def _test_claude_runtime_resolves_cli_selection_before_first_catalog_read(
             ClaudeSDKClient=_DiscoveryClientType(server_info={"models": _CLI_MODELS})
         )
     ).list_model_catalog(query="opus")
-    selection_id = listed.models[0].selection_id
+    selection_id = next(
+        model.selection_id for model in listed.models if model.id == "opus[1m]"
+    )
 
     client = _FakeClaudeClient(
         messages=[SimpleNamespace(type="result", session_id="claude_restart")]
