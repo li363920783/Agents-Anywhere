@@ -4,6 +4,7 @@ import asyncio
 from typing import Any
 
 import pytest
+from test_runtime_instance_routing import _insert_connector
 
 from agent_server.core.catalogs import (
     CatalogDomainError,
@@ -19,6 +20,7 @@ from agent_server.core.protocol import (
     ProtocolPermissionItem,
     ProtocolReasoningItem,
 )
+from agent_server.infra.repositories.facade import Store
 from agent_server.services.catalogs import CatalogService, CatalogServiceError
 
 
@@ -216,3 +218,68 @@ def _permission_catalog() -> ProtocolPermissionCatalog:
             )
         ],
     )
+
+
+def _claude_alias_catalog(revision: int, title: str) -> dict[str, Any]:
+    return {
+        "runtime": "claude",
+        "revision": revision,
+        "models": [
+            {
+                "id": "opus",
+                "title": title,
+                "selectionId": "sel_claude_opus",
+                "description": "Opus alias",
+                "reasoningItems": [],
+                "metadata": {"source": "claude-code.initialize"},
+            }
+        ],
+    }
+
+
+def test_catalog_update_takes_changed_content_at_a_higher_revision() -> None:
+    """The Connector relies on this to republish a renamed model list.
+
+    A provider switch rewrites the model names behind the aliases, which
+    changes the catalog content without any runtime config change, so the
+    revision has to be the only thing standing between the two publishes.
+    """
+
+    store = Store()
+
+    async def run() -> None:
+        await _insert_connector(store, "conn_alias")
+        published = _claude_alias_catalog(5005, "Claude Opus 5")
+        switched = _claude_alias_catalog(5005, "deepseek-v4.1-flash")
+
+        async def ingest(
+            revision: int,
+            catalog: dict[str, Any],
+        ) -> CatalogUpdateOutcome:
+            return await store.update_protocol_catalog(
+                "conn_alias",
+                runtime="claude",
+                runtime_id="claude",
+                catalog_type="model",
+                revision=revision,
+                catalog=catalog,
+            )
+
+        assert await ingest(5005, published) == "accepted"
+        # Equal revision with different content: the platform keeps what it has.
+        assert await ingest(5005, switched) == "conflict"
+        # The Connector's input fingerprint moves the revision past the publish.
+        assert await ingest(5006, switched) == "accepted"
+        assert (
+            await store.get_protocol_catalog(
+                "conn_alias",
+                runtime_id="claude",
+                catalog_type="model",
+            )
+            == switched
+        )
+
+    try:
+        asyncio.run(run())
+    finally:
+        asyncio.run(store.close())
