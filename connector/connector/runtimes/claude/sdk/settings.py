@@ -28,11 +28,11 @@ CLAUDE_MODEL_ENV_KEYS = (
 def claude_user_settings_environment(path: str | None = None) -> dict[str, str]:
     """Read the model-name environment the user's Claude Code settings define.
 
-    The Agent SDK does not load user settings files for its CLI subprocess, so
-    an alias remapped there (`ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4.1-flash`)
-    never reaches the CLI: it keeps reporting and running the bundled models.
-    Forwarding these keys makes the runtime follow the same mapping the user's
-    own `claude` shell does.
+    Claude Code builds the model list it reports from the process environment,
+    so an alias remapped only in the settings file
+    (`ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4.1-flash`) never shows up there:
+    the CLI keeps reporting the bundled models. Forwarding these keys makes the
+    runtime follow the same mapping the user's own `claude` shell does.
     """
 
     settings_path = Path(path or os.path.expanduser(CLAUDE_USER_SETTINGS_PATH))
