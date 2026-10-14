@@ -2172,6 +2172,9 @@ async def _test_claude_runtime_lists_models_reported_by_claude_code() -> None:
     assert options.kwargs["cli_path"] == "/opt/claude/bin/claude"
     assert options.kwargs["env"] == {"EXAMPLE": "1"}
     assert "model" not in options.kwargs
+    # Claude Code refuses to start as root without an explicit permission mode,
+    # so the discovery handshake has to name one.
+    assert options.kwargs["permission_mode"] == "default"
     assert discovery.instances[0].connected is True
     assert discovery.instances[0].disconnected is True
     assert discovery.instances[0].queries == []
