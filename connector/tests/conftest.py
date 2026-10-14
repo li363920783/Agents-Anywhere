@@ -4,6 +4,7 @@ import pytest
 
 from connector.core import runtime_owner
 from connector.runtimes.claude.sdk import settings as claude_settings
+from connector.runtimes.claude.sessions import desktop_groups
 
 
 @pytest.fixture(autouse=True)
@@ -14,6 +15,17 @@ def no_claude_user_settings(monkeypatch):
         claude_settings,
         "claude_user_settings_environment",
         lambda path=None: {},
+    )
+
+
+@pytest.fixture(autouse=True)
+def no_desktop_app_groups(monkeypatch):
+    """Keep tests off the group files the local Claude desktop app owns."""
+
+    monkeypatch.setattr(
+        desktop_groups,
+        "group_name_for",
+        lambda session_id: None,
     )
 
 

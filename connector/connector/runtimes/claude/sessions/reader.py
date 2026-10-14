@@ -42,6 +42,7 @@ from connector.runtimes.claude.sdk.history import (
     read_sdk_session_info,
     read_sdk_session_messages,
 )
+from connector.runtimes.claude.sessions import desktop_groups
 from connector.runtimes.claude.sessions.cache import ClaudeSessionStore
 from connector.runtimes.claude.sessions.sync_state import ClaudeSessionSyncStateStore
 from connector.runtimes.claude.timeline.messages import (
@@ -187,7 +188,7 @@ class ClaudeSessionReader:
             getattr(self.host, "session_namespace", self.host.connector_id),
             external_session_id,
         )
-        title = _session_title(sdk_session)
+        title = _session_title(sdk_session, external_session_id)
         cwd = _string_attr(sdk_session, "cwd", "directory")
         ordering_time = _timestamp_from_epoch(
             _int_attr(sdk_session, "last_modified", "mtime", "updated_at")
@@ -271,7 +272,7 @@ class ClaudeSessionReader:
         session = ClaudeSession(
             session_id=session_id,
             external_session_id=external_session_id,
-            title=_session_title(info),
+            title=_session_title(info, external_session_id),
             cwd=_string_attr(info, "cwd", "directory"),
             ordering_time=_timestamp_from_epoch(
                 _int_attr(info, "last_modified", "mtime", "updated_at")
@@ -724,11 +725,25 @@ def _cursor_offset(cursor: str | None) -> int:
     return max(offset, 0)
 
 
-def _session_title(session: Any) -> str | None:
+SESSION_TITLE_MAX_LENGTH = 255
+
+
+def _session_title(
+    session: Any,
+    external_session_id: str | None = None,
+) -> str | None:
     # Claude SDK-created sessions may update `summary` to the latest user
     # prompt after every turn. `first_prompt` is the stable fallback title;
     # `custom_title` also contains persisted Claude Code AI titles when present.
-    return _string_attr(session, "custom_title", "first_prompt", "summary", "title")
+    title = _string_attr(session, "custom_title", "first_prompt", "summary", "title")
+    if title is None:
+        return None
+    # Sessions the user filed in the Claude desktop app carry that grouping,
+    # which is the only place it exists.
+    group = desktop_groups.group_name_for(external_session_id)
+    if group is None:
+        return title
+    return f"[{group}] {title}"[:SESSION_TITLE_MAX_LENGTH]
 
 
 def _sync_marker(session: Any) -> str:
