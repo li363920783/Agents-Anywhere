@@ -8,6 +8,9 @@ from typing import Any
 
 from connector.logging import logger
 from connector.runtimes.claude.domain.session import ClaudeSession
+from connector.runtimes.claude.domain.permissions import (
+    claude_default_permission_selection_id,
+)
 from connector.runtimes.claude.sdk.client import (
     SdkLoader,
     build_sdk_options,
@@ -118,7 +121,13 @@ class ClaudeModelDiscovery:
             options = build_sdk_options(
                 sdk,
                 self.config_values,
-                ClaudeSession(session_id="claude-model-discovery"),
+                ClaudeSession(
+                    session_id="claude-model-discovery",
+                    # Claude Code refuses to start as root without an explicit
+                    # permission mode, so a handshake that runs no tools still
+                    # has to name one.
+                    selections={"permission": claude_default_permission_selection_id()},
+                ),
                 settings_path=settings_path,
             )
             client = client_cls(options=options)
