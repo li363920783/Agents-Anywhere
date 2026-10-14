@@ -69,6 +69,9 @@ CLAUDE_PERMISSION_MODES: tuple[Mapping[str, Any], ...] = (
 )
 
 
+CLAUDE_BYPASS_PERMISSION_MODE = "bypassPermissions"
+
+
 def claude_permission_catalog(
     revision: int,
     query: str | None = None,

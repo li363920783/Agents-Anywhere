@@ -3557,6 +3557,45 @@ def test_claude_runtime_tool_approval_round_trips_to_sdk() -> None:
     asyncio.run(_test_claude_runtime_tool_approval_round_trips_to_sdk())
 
 
+def test_claude_runtime_bypass_selection_allows_tools_without_a_notice() -> None:
+    asyncio.run(_test_claude_runtime_bypass_selection_allows_tools_without_a_notice())
+
+
+async def _test_claude_runtime_bypass_selection_allows_tools_without_a_notice() -> None:
+    host = _RecordingHost()
+    client = _ApprovalClaudeClient()
+    runtime = _runtime(host=host, client=client)
+
+    bypass = next(
+        permission
+        for permission in (await runtime.list_permission_catalog()).permissions
+        if permission.id == "bypassPermissions"
+    )
+
+    result = await runtime.start_turn(
+        "sess_bypass",
+        "claude_session_bypass",
+        "run ls",
+        selections={"permission": bypass.selection_id},
+    )
+    task = runtime._sessions["sess_bypass"].active_task
+
+    assert result.ok is True
+    assert task is not None
+    await task
+
+    # Claude Code auto-approves for this mode and never consults the callback,
+    # but it refuses the mode when the Connector runs as root, so the callback
+    # has to answer instead of prompting.
+    assert client.options.kwargs["permission_mode"] == "bypassPermissions"
+    assert host.notice_upserts == []
+    assert "waiting_approval" not in [
+        update["status"] for update in host.session_state_updates
+    ]
+    assert client.permission_results[0].behavior == "allow"
+
+
+
 async def _test_claude_runtime_tool_approval_round_trips_to_sdk() -> None:
     host = _RecordingHost()
     client = _ApprovalClaudeClient()
