@@ -10,10 +10,6 @@ from connector.runtime_protocol import (
     RuntimeInvalidRequestError,
     RuntimeOperationResult,
 )
-from connector.runtimes.claude.domain.permissions import (
-    CLAUDE_BYPASS_PERMISSION_MODE,
-    permission_mode_from_selection_id,
-)
 from connector.runtimes.claude.domain.approvals import (
     ClaudeApprovalDecision,
     approval_notice,
@@ -21,12 +17,16 @@ from connector.runtimes.claude.domain.approvals import (
     notice_transition,
     permission_result_from_decision,
 )
-from connector.runtimes.claude.domain.session import ClaudeSession
 from connector.runtimes.claude.domain.input_requests import (
     ClaudeInputRequest,
     claude_input_request,
     input_request_notice,
 )
+from connector.runtimes.claude.domain.permissions import (
+    CLAUDE_BYPASS_PERMISSION_MODE,
+    permission_mode_from_selection_id,
+)
+from connector.runtimes.claude.domain.session import ClaudeSession
 from connector.runtimes.claude.notifications.notices import ClaudeNoticeRegistry
 from connector.runtimes.claude.notifications.projector import (
     ClaudeNotificationProjector,
