@@ -738,12 +738,33 @@ def _session_title(
     title = _string_attr(session, "custom_title", "first_prompt", "summary", "title")
     if title is None:
         return None
-    # Sessions the user filed in the Claude desktop app carry that grouping,
-    # which is the only place it exists.
-    group = desktop_groups.group_name_for(external_session_id)
-    if group is None:
-        return title
-    return f"[{group}] {title}"[:SESSION_TITLE_MAX_LENGTH]
+    prefix = _title_prefix(session, external_session_id)
+    # The Server caps titles, and the prefix is the part that can grow.
+    return f"{prefix}{title}"[:SESSION_TITLE_MAX_LENGTH]
+
+
+def _title_prefix(session: Any, external_session_id: str | None) -> str:
+    """Where the user filed this session, and the branch it runs on.
+
+    Neither reaches clients as a field of its own, and a worktree session's
+    working directory is a random name, so the title is where they stay legible.
+    """
+
+    parts = [
+        part
+        for part in (
+            desktop_groups.group_name_for(external_session_id),
+            _session_branch(session),
+        )
+        if part
+    ]
+    return f"[{' · '.join(parts)}] " if parts else ""
+
+
+def _session_branch(session: Any) -> str | None:
+    branch = _string_attr(session, "git_branch")
+    # A detached head reports a name that says nothing about the work.
+    return None if branch in (None, "HEAD") else branch
 
 
 def _sync_marker(session: Any) -> str:
