@@ -102,3 +102,25 @@ def test_session_title_prefixes_the_desktop_app_group(monkeypatch) -> None:
     assert _session_title(session, "cli-1") == "[followup-online] 随访二期1010需求"
     assert _session_title(session, "cli-untracked") == "随访二期1010需求"
     assert _session_title(SimpleNamespace(), "cli-1") is None
+
+
+def test_session_title_carries_the_branch(monkeypatch) -> None:
+    monkeypatch.setattr(
+        desktop_groups,
+        "group_name_for",
+        lambda session_id: "followup-online" if session_id == "cli-1" else None,
+    )
+
+    both = SimpleNamespace(
+        custom_title="随访二期1010需求",
+        git_branch="feature/ai-follow-0810",
+    )
+    assert _session_title(both, "cli-1") == (
+        "[followup-online · feature/ai-follow-0810] 随访二期1010需求"
+    )
+
+    branch_only = SimpleNamespace(custom_title="看下最近的提交", git_branch="ldy-master")
+    assert _session_title(branch_only, "cli-2") == "[ldy-master] 看下最近的提交"
+
+    detached = SimpleNamespace(custom_title="x", git_branch="HEAD")
+    assert _session_title(detached, "cli-2") == "x"
