@@ -68,9 +68,15 @@ export function SessionSidebarItem({
   const deviceName = connectors.find((connector) => connector.id === item.connectorId)?.name ?? item.connectorId
   const projectName = projects.find((project) => project.id === item.projectId)?.name
     || item.cwd?.split(/[\\/]/).filter(Boolean).pop()
+  const cwdName = item.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? null
   const deviceLabel = previousConnectorId === item.connectorId ? "^" : deviceName
   const contextLabel = [projectName, deviceLabel].filter(Boolean).join(" · ")
   const showContext = sidebarShowsSessions && !sidebarCompactSessions && !inset && Boolean(contextLabel)
+  const showCwd =
+    sidebarShowsSessions &&
+    !sidebarCompactSessions &&
+    Boolean(cwdName) &&
+    cwdName !== projectName
   const [renameOpen, setRenameOpen] = React.useState(false)
   const [titleDraft, setTitleDraft] = React.useState(item.title ?? "")
   const [renaming, setRenaming] = React.useState(false)
@@ -136,7 +142,7 @@ export function SessionSidebarItem({
                 onClick={onOpen}
                 className={cn(
                   "rounded-none px-7 text-muted-foreground data-[active=true]:text-foreground",
-                  (showContext || meta) && "h-auto flex-col items-stretch gap-1",
+                  (showContext || meta || showCwd) && "h-auto flex-col items-stretch gap-1",
                   inset && "pl-8.5 has-[>svg:first-child]:pl-8.5",
                   !hasStatusIndicator && "group-hover/session:pr-[5.25rem] group-focus-within/session:pr-[5.25rem]",
                   isActive && !hasStatusIndicator && "pr-[5.25rem]",
@@ -163,6 +169,12 @@ export function SessionSidebarItem({
                     {meta}
                   </span>
                 ) : null}
+                {showCwd ? (
+                  <span className="flex w-full min-w-0 items-center gap-1 text-[11px] leading-4 text-muted-foreground/80">
+                    <FolderOpen className="size-3 shrink-0" />
+                    <span className="truncate">{cwdName}</span>
+                  </span>
+                ) : null}
               </SidebarMenuButton>
             </div>
           </ContextMenuTrigger>
@@ -178,7 +190,7 @@ export function SessionSidebarItem({
               <div
                 className={cn(
                   "absolute right-5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5",
-                  (showContext || meta) && "top-4",
+                  (showContext || meta || showCwd) && "top-4",
                   "group-hover/session:flex group-focus-within/session:flex",
                   isActive && "flex",
                 )}
