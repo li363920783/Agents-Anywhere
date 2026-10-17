@@ -49,7 +49,7 @@ export function SessionSidebarItem({
   onToggleArchive,
   onRename,
 }: {
-  item: { runtime: string; runtimeType?: string; id: string; connectorId: string; projectId?: string | null; cwd?: string | null; title?: string | null; status: string; unread: boolean; pinned: boolean; archived: boolean }
+  item: { runtime: string; runtimeType?: string; id: string; connectorId: string; projectId?: string | null; cwd?: string | null; gitBranch?: string | null; title?: string | null; status: string; unread: boolean; pinned: boolean; archived: boolean }
   /** Optional `device · agent` identity line for sessions shown outside projects. */
   meta?: string | null
   inset?: boolean
@@ -142,7 +142,7 @@ export function SessionSidebarItem({
                 onClick={onOpen}
                 className={cn(
                   "rounded-none px-7 text-muted-foreground data-[active=true]:text-foreground",
-                  (showContext || meta || showCwd) && "h-auto flex-col items-stretch gap-1",
+                  (showContext || meta || showCwd || item.gitBranch) && "h-auto flex-col items-stretch gap-1",
                   inset && "pl-8.5 has-[>svg:first-child]:pl-8.5",
                   !hasStatusIndicator && "group-hover/session:pr-[5.25rem] group-focus-within/session:pr-[5.25rem]",
                   isActive && !hasStatusIndicator && "pr-[5.25rem]",
@@ -169,10 +169,19 @@ export function SessionSidebarItem({
                     {meta}
                   </span>
                 ) : null}
-                {showCwd ? (
-                  <span className="flex w-full min-w-0 items-center gap-1 text-[11px] leading-4 text-muted-foreground/80">
-                    <FolderOpen className="size-3 shrink-0" />
-                    <span className="truncate">{cwdName}</span>
+                {showCwd || item.gitBranch ? (
+                  <span className="flex w-full min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground/80">
+                    {showCwd ? (
+                      <>
+                        <FolderOpen className="size-3 shrink-0" />
+                        <span className="truncate">{cwdName}</span>
+                      </>
+                    ) : null}
+                    {item.gitBranch ? (
+                      <span className="shrink-0 truncate rounded bg-muted px-1 font-mono text-[10px]">
+                        {item.gitBranch}
+                      </span>
+                    ) : null}
                   </span>
                 ) : null}
               </SidebarMenuButton>
@@ -190,7 +199,7 @@ export function SessionSidebarItem({
               <div
                 className={cn(
                   "absolute right-5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5",
-                  (showContext || meta || showCwd) && "top-4",
+                  (showContext || meta || showCwd || item.gitBranch) && "top-4",
                   "group-hover/session:flex group-focus-within/session:flex",
                   isActive && "flex",
                 )}
