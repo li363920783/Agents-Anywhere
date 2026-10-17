@@ -69,6 +69,9 @@ CLAUDE_PERMISSION_MODES: tuple[Mapping[str, Any], ...] = (
 )
 
 
+CLAUDE_BYPASS_PERMISSION_MODE = "bypassPermissions"
+
+
 def claude_permission_catalog(
     revision: int,
     query: str | None = None,
@@ -87,6 +90,20 @@ def claude_permission_catalog(
         revision=revision,
         permissions=permissions,
     )
+
+
+def claude_default_permission_selection_id() -> str:
+    """Selection id of the catalog's default permission mode.
+
+    A handshake that never runs tools still has to declare one: Claude Code
+    refuses to start as root when no permission mode is given, and the model
+    discovery handshake would otherwise fail there.
+    """
+
+    for item in CLAUDE_PERMISSION_MODES:
+        if item.get("default") is True:
+            return _selection_id(str(item["id"]))
+    return _selection_id("default")
 
 
 def permission_mode_from_selection_id(selection_id: str | None) -> str | None:

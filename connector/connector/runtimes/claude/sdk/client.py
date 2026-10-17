@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import inspect
+import os
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from typing import Any
 
 from connector.runtimes.claude.domain.models import model_selection_from_selection_id
 from connector.runtimes.claude.domain.permissions import (
+    CLAUDE_BYPASS_PERMISSION_MODE,
     permission_mode_from_selection_id,
 )
 from connector.runtimes.claude.domain.session import ClaudeSession
+from connector.runtimes.claude.sdk import settings
 from connector.runtimes.model_gateway import model_gateway_from_config
 
 SdkLoader = Callable[[], Any]
@@ -90,8 +93,8 @@ def build_sdk_options(
             kwargs["model"] = model_selection.cli_model
         if model_selection.effort_id is not None:
             kwargs["effort"] = model_selection.effort_id
-    permission_mode = permission_mode_from_selection_id(
-        session.selections.get("permission")
+    permission_mode = cli_permission_mode(
+        permission_mode_from_selection_id(session.selections.get("permission"))
     )
     if permission_mode is not None:
         kwargs["permission_mode"] = permission_mode
@@ -120,21 +123,40 @@ def build_sdk_options(
     return options_cls(**kwargs)
 
 
-def claude_sdk_environment(config_values: Mapping[str, Any]) -> dict[str, str]:
+def claude_sdk_environment(config_values: Mapping[str, Any]) -> dict[str, Any]:
     """Build explicit environment overrides for one Claude SDK subprocess."""
 
+    # The user's Claude Code settings remap model aliases to third-party
+    # models; the SDK subprocess does not read that file, so forward the model
+    # names. Runtime config still wins, and credentials stay untouched.
+    environment: dict[str, Any] = settings.claude_user_settings_environment()
     configured_environment = config_values.get("environment")
-    environment = (
-        dict(configured_environment)
-        if isinstance(configured_environment, Mapping)
-        else {}
-    )
+    if isinstance(configured_environment, Mapping):
+        environment.update(configured_environment)
     model_gateway = model_gateway_from_config(config_values.get("modelGateway"))
     if model_gateway is not None:
         environment["ANTHROPIC_BASE_URL"] = model_gateway.base_url
         environment["ANTHROPIC_AUTH_TOKEN"] = model_gateway.api_key
         environment["ANTHROPIC_API_KEY"] = ""
     return environment
+
+
+def cli_permission_mode(permission_mode: str | None) -> str | None:
+    """The permission mode to hand the CLI, adjusted for what it will accept.
+
+    Claude Code refuses to auto-approve as root and exits instead, so a bypass
+    selection would take the whole session down. Ask for the default mode there
+    and let the approval callback answer instead; it honours the same selection.
+    """
+
+    if permission_mode == CLAUDE_BYPASS_PERMISSION_MODE and _runs_as_root():
+        return "default"
+    return permission_mode
+
+
+def _runs_as_root() -> bool:
+    get_effective_uid = getattr(os, "geteuid", None)
+    return get_effective_uid is not None and get_effective_uid() == 0
 
 
 async def connect_client(client: Any) -> None:

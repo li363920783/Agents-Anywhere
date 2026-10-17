@@ -828,6 +828,7 @@ class SessionView(BaseModel):
     externalSessionId: str | None = None
     title: str | None = None
     cwd: str | None = None
+    gitBranch: str | None = None
     status: SessionStatus
     takeover: bool
     pinned: bool = False

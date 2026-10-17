@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
+import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from agent_server.core.api_namespace import api_v2_path
@@ -417,7 +421,9 @@ class SessionRunService:
         await self._ensure_session_runtime_running(session, user_id=user_id)
         runtime_status = await self._read_runtime_status(session)
         if runtime_status not in {"idle", "error"}:
-            raise SessionRunConflictError(f"session is {runtime_status}")
+            await self._recover_stale_run(session, runtime_status)
+        # An active turn no longer blocks the send: the connector queues the
+        # message and starts it once the current turn finishes.
         await self._require_session_capability(
             session,
             SESSION_SEND_MESSAGE,
@@ -520,6 +526,42 @@ class SessionRunService:
             observed_at=observed_at if isinstance(observed_at, str) else None,
             observation_origin=observation_origin,
         )
+
+    async def _recover_stale_run(
+        self,
+        session: SessionView,
+        runtime_status: SessionStatus,
+    ) -> SessionStatus:
+        """Recover a turn that never reported back.
+
+        A dead CLI subprocess can leave the connector reporting ``running``
+        forever, which blocks every later message. Once the recorded run is
+        older than the TTL, interrupt it (the connector resets to idle) and
+        re-read the state so the new turn can start.
+        """
+
+        active_run = await self._store.get_active_run(session.id)
+        if active_run is None or not _active_run_is_stale(active_run):
+            return runtime_status
+        try:
+            await self._manager.request(
+                session.connectorId,
+                "session.interrupt",
+                {
+                    "sessionId": session.id,
+                    "runtime": session.runtime,
+                    "runtimeId": _session_runtime_id(session),
+                },
+            )
+        except ConnectorRpcError:
+            pass
+        await self._store.clear_active_run(session.id)
+        # The connector publishes idle/error after honouring the interrupt.
+        await asyncio.sleep(_STALE_RUN_SETTLE_SECONDS)
+        try:
+            return await self._read_runtime_status(session)
+        except SessionRunUpstreamError:
+            return runtime_status
 
     async def _read_runtime_status(self, session: SessionView) -> SessionStatus:
         params: dict[str, Any] = {
@@ -964,6 +1006,32 @@ class SessionRunService:
             raise SessionRunUpstreamError(exc.message or exc.code) from exc
         await self._store.clear_active_run(session_id)
         return RpcResponsePayload(ok=True, result=result)
+
+
+_STALE_RUN_TTL_SECONDS = float(os.environ.get("AGENT_SERVER_STALE_RUN_SECONDS", "900"))
+_STALE_RUN_SETTLE_SECONDS = float(
+    os.environ.get("AGENT_SERVER_STALE_RUN_SETTLE_SECONDS", "2")
+)
+
+
+def _active_run_is_stale(active_run: Any) -> bool:
+    started_at = (
+        active_run.get("started_at") if isinstance(active_run, Mapping) else None
+    )
+    started = _parse_run_time(started_at)
+    if started is None:
+        return False
+    age = (datetime.now(UTC) - started).total_seconds()
+    return age >= _STALE_RUN_TTL_SECONDS
+
+
+def _parse_run_time(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _session_source_error_detail(session: SessionView) -> dict[str, str]:
