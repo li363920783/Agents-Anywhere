@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 from connector.logging import logger
 from connector.runtime_protocol import (
@@ -632,6 +634,68 @@ class ClaudeTurnRunner:
                         else:
                             connection.arm_idle()
                         await self.refresh_idle_connection(session)
+
+            if (
+                execution.queued_content is not None
+                and not self.stopping
+                and terminal is not None
+                and terminal.status == "completed"
+            ):
+                self._drain_queued_turn(session, execution)
+
+    def _drain_queued_turn(
+        self,
+        session: ClaudeSession,
+        execution: ClaudeExecution,
+    ) -> None:
+        content = execution.queued_content
+        attachments = execution.queued_attachments
+        client_message_id = execution.queued_client_message_id
+        selections = execution.queued_selections
+        execution.queued_content = None
+        execution.queued_attachments = ()
+        execution.queued_client_message_id = None
+        execution.queued_selections = {}
+        asyncio.create_task(
+            self._start_queued_turn(
+                session, content, attachments, client_message_id, selections
+            )
+        )
+
+    async def _start_queued_turn(
+        self,
+        session: ClaudeSession,
+        content: str,
+        attachments: tuple[Any, ...],
+        client_message_id: str | None,
+        selections: Mapping[str, str | None],
+    ) -> None:
+        async with session.execution_lock:
+            execution = ClaudeExecution(
+                turn_id=f"turn_claude_{secrets.token_urlsafe(12)}"
+            )
+            session.execution = execution
+            session.selections = dict(selections)
+            try:
+                await self.notifications.session_state.session_state_update(
+                    session,
+                    "waiting",
+                    selections=session.selections,
+                    metadata={"source": "claude.turn.drain"},
+                )
+                execution.task = asyncio.create_task(
+                    self.drive_turn(
+                        session=session,
+                        execution=execution,
+                        content=content,
+                        attachments=attachments,
+                        client_message_id=client_message_id,
+                    )
+                )
+            except BaseException:
+                session.execution = None
+                execution.finished.set()
+                raise
 
     async def publish_replayed_user_message(
         self,

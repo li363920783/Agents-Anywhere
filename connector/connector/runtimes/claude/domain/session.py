@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 from connector.runtime_protocol import RuntimeTimelineItem
 from connector.runtimes.session_identity import stable_runtime_session_id
@@ -18,6 +19,11 @@ class ClaudeExecution:
     interrupt_reason: str | None = None
     finalization_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     finished: asyncio.Event = field(default_factory=asyncio.Event)
+    # A user turn queued while this execution is running.
+    queued_content: str | None = None
+    queued_attachments: tuple[Any, ...] = ()
+    queued_client_message_id: str | None = None
+    queued_selections: dict[str, str | None] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
