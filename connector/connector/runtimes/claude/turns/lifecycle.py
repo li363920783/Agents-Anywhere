@@ -541,6 +541,21 @@ class ClaudeTurnRunner:
             terminal = interrupted_terminal_event(
                 execution.interrupt_reason or "cancelled"
             )
+            partial_text = stream_accumulator.current_text()
+            if not emitted_final_assistant_content and partial_text:
+                await self.notifications.timeline_activity.timeline_item_upsert(
+                    self.timeline.message_item(
+                        session=session,
+                        turn_id=turn_id,
+                        role="assistant",
+                        text=partial_text,
+                        event="claude.turn.interrupted",
+                        item_id=stream_accumulator.final_item_id(session, turn_id),
+                        revision=stream_accumulator.next_final_revision(),
+                    )
+                )
+                emitted_final_assistant_content = True
+                stream_accumulator.reset()
         except Exception as exc:  # noqa: BLE001
             terminal = failed_terminal_event(
                 code=exc.__class__.__name__,
