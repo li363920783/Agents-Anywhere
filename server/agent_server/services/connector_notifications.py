@@ -333,6 +333,7 @@ class SessionNotificationHandler:
                 session_id=session_id,
                 title=params.get("title"),
                 cwd=params.get("cwd"),
+                git_branch=_session_git_branch(params),
                 external_session_id=external_session_id,
                 last_synced_at=params.get("lastSyncedAt"),
                 source_observed_at=params.get("sourceObservedAt"),
@@ -361,6 +362,7 @@ class SessionNotificationHandler:
                     external_session_id=_string_or_none(external_session_id),
                     title=params.get("title"),
                     cwd=params.get("cwd"),
+                    git_branch=_session_git_branch(params),
                     last_synced_at=params.get("lastSyncedAt"),
                     source_observed_at=params.get("sourceObservedAt"),
                     last_activity_at=params.get("lastActivityAt"),
@@ -1304,6 +1306,15 @@ def _v2_session_status(value: Any) -> SessionStatus | None:
     }:
         return str(value)
     return "idle"
+
+
+def _session_git_branch(params: dict[str, Any]) -> str | None:
+    metadata = params.get("metadata")
+    sdk = metadata.get("sdk") if isinstance(metadata, dict) else None
+    if not isinstance(sdk, dict):
+        return None
+    branch = sdk.get("git_branch")
+    return branch if isinstance(branch, str) and branch else None
 
 
 def _session_meta_should_archive(params: dict[str, Any]) -> bool:

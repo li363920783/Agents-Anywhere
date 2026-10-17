@@ -226,7 +226,7 @@ def _history_session(
     return ClaudeSession(
         session_id=session_id,
         external_session_id=external_session_id,
-        title=_session_title(info, external_session_id),
+        title=_session_title(info),
         cwd=_string_attr(info, "cwd", "directory"),
         ordering_time=_timestamp_from_epoch(
             _sdk_session_metadata(info).get("last_modified")
