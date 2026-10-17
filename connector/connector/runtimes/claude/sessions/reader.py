@@ -42,7 +42,6 @@ from connector.runtimes.claude.sdk.history import (
     read_sdk_session_info,
     read_sdk_session_messages,
 )
-from connector.runtimes.claude.sessions import desktop_groups
 from connector.runtimes.claude.sessions.cache import ClaudeSessionStore
 from connector.runtimes.claude.sessions.sync_state import ClaudeSessionSyncStateStore
 from connector.runtimes.claude.timeline.messages import (
@@ -188,7 +187,7 @@ class ClaudeSessionReader:
             getattr(self.host, "session_namespace", self.host.connector_id),
             external_session_id,
         )
-        title = _session_title(sdk_session, external_session_id)
+        title = _session_title(sdk_session)
         cwd = _string_attr(sdk_session, "cwd", "directory")
         ordering_time = _timestamp_from_epoch(
             _int_attr(sdk_session, "last_modified", "mtime", "updated_at")
@@ -272,7 +271,7 @@ class ClaudeSessionReader:
         session = ClaudeSession(
             session_id=session_id,
             external_session_id=external_session_id,
-            title=_session_title(info, external_session_id),
+            title=_session_title(info),
             cwd=_string_attr(info, "cwd", "directory"),
             ordering_time=_timestamp_from_epoch(
                 _int_attr(info, "last_modified", "mtime", "updated_at")
@@ -725,46 +724,11 @@ def _cursor_offset(cursor: str | None) -> int:
     return max(offset, 0)
 
 
-SESSION_TITLE_MAX_LENGTH = 255
-
-
-def _session_title(
-    session: Any,
-    external_session_id: str | None = None,
-) -> str | None:
+def _session_title(session: Any) -> str | None:
     # Claude SDK-created sessions may update `summary` to the latest user
     # prompt after every turn. `first_prompt` is the stable fallback title;
     # `custom_title` also contains persisted Claude Code AI titles when present.
-    title = _string_attr(session, "custom_title", "first_prompt", "summary", "title")
-    if title is None:
-        return None
-    prefix = _title_prefix(session, external_session_id)
-    # The Server caps titles, and the prefix is the part that can grow.
-    return f"{prefix}{title}"[:SESSION_TITLE_MAX_LENGTH]
-
-
-def _title_prefix(session: Any, external_session_id: str | None) -> str:
-    """Where the user filed this session, and the branch it runs on.
-
-    Neither reaches clients as a field of its own, and a worktree session's
-    working directory is a random name, so the title is where they stay legible.
-    """
-
-    parts = [
-        part
-        for part in (
-            desktop_groups.group_name_for(external_session_id),
-            _session_branch(session),
-        )
-        if part
-    ]
-    return f"[{' · '.join(parts)}] " if parts else ""
-
-
-def _session_branch(session: Any) -> str | None:
-    branch = _string_attr(session, "git_branch")
-    # A detached head reports a name that says nothing about the work.
-    return None if branch in (None, "HEAD") else branch
+    return _string_attr(session, "custom_title", "first_prompt", "summary", "title")
 
 
 def _sync_marker(session: Any) -> str:

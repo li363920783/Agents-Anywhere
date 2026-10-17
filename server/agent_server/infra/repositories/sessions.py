@@ -1,4 +1,4 @@
-# ruff: noqa: F403, F405, I001
+# ruff: noqa: I001
 
 from __future__ import annotations
 
@@ -351,6 +351,7 @@ class SessionRepositoryMixin:
         external_session_id: str | None,
         title: str | None = None,
         cwd: str | None = None,
+        git_branch: str | None = None,
         status: str | None = None,
         last_synced_at: str | None = None,
         source_observed_at: str | None = None,
@@ -394,6 +395,7 @@ class SessionRepositoryMixin:
             external_session_id=external_session_id,
             title=title,
             cwd=cwd,
+            git_branch=git_branch,
             status=status,
             last_synced_at=last_synced_at,
             source_observed_at=source_observed_at,
@@ -415,6 +417,7 @@ class SessionRepositoryMixin:
         external_session_id: str | None,
         title: str | None = None,
         cwd: str | None = None,
+        git_branch: str | None = None,
         status: str | None = None,
         last_synced_at: str | None = None,
         source_observed_at: str | None = None,
@@ -469,6 +472,7 @@ class SessionRepositoryMixin:
                         title=title,
                         title_source=TITLE_SOURCE_CONNECTOR if title is not None else None,
                         cwd=normalized_cwd,
+                        git_branch=git_branch,
                         status=status or "idle",
                         takeover=0,
                         last_synced_at=last_synced_at,
@@ -498,6 +502,7 @@ class SessionRepositoryMixin:
                             sessions_t.c.title,
                             sessions_t.c.title_source,
                             sessions_t.c.cwd,
+                            sessions_t.c.git_branch,
                             sessions_t.c.project_id,
                             sessions_t.c.status,
                             sessions_t.c.model_selection_id,
@@ -533,6 +538,8 @@ class SessionRepositoryMixin:
                     )
                     values["project_id"] = project_id
                     values["cwd"] = normalized_cwd
+                if git_branch is not None and current.git_branch != git_branch:
+                    values["git_branch"] = git_branch
                 if status is not None:
                     values["status"] = status
                 if last_synced_at is not None:
@@ -563,6 +570,7 @@ class SessionRepositoryMixin:
                         "external_session_id",
                         "title",
                         "cwd",
+                        "git_branch",
                         "project_id",
                         "status",
                         "model_selection_id",
@@ -1737,6 +1745,7 @@ class SessionRepositoryMixin:
         status: str | None = None,
         title: str | None = None,
         cwd: str | None = None,
+        git_branch: str | None = None,
         external_session_id: str | None = None,
         last_synced_at: str | None = None,
         source_observed_at: str | None = None,
@@ -1769,6 +1778,7 @@ class SessionRepositoryMixin:
                         sessions_t.c.title,
                         sessions_t.c.title_source,
                         sessions_t.c.cwd,
+                        sessions_t.c.git_branch,
                         sessions_t.c.external_session_id,
                         sessions_t.c.last_activity_at,
                         sessions_t.c.source_state,
@@ -1795,6 +1805,8 @@ class SessionRepositoryMixin:
                 )
                 values["project_id"] = project_id
                 values["cwd"] = normalized_cwd
+            if git_branch is not None and row.git_branch != git_branch:
+                values["git_branch"] = git_branch
             if source_state is not None:
                 values.update(
                     _source_archive_update(
@@ -1808,6 +1820,7 @@ class SessionRepositoryMixin:
                 "status",
                 "title",
                 "cwd",
+                "git_branch",
                 "project_id",
                 "external_session_id",
                 "source_state",
@@ -1897,6 +1910,7 @@ class SessionRepositoryMixin:
             externalSessionId=row["external_session_id"],
             title=title,
             cwd=row["cwd"],
+            gitBranch=row.get("git_branch"),
             status=row["status"],
             takeover=bool(row["takeover"]),
             pinned=bool(row["pinned"]),
