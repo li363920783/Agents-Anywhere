@@ -421,9 +421,9 @@ class SessionRunService:
         await self._ensure_session_runtime_running(session, user_id=user_id)
         runtime_status = await self._read_runtime_status(session)
         if runtime_status not in {"idle", "error"}:
-            runtime_status = await self._recover_stale_run(session, runtime_status)
-        if runtime_status not in {"idle", "error"}:
-            raise SessionRunConflictError(f"session is {runtime_status}")
+            await self._recover_stale_run(session, runtime_status)
+        # An active turn no longer blocks the send: the connector queues the
+        # message and starts it once the current turn finishes.
         await self._require_session_capability(
             session,
             SESSION_SEND_MESSAGE,

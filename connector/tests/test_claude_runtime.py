@@ -3298,13 +3298,12 @@ async def _test_claude_runtime_rejects_concurrent_start_for_one_session() -> Non
     )
 
     results = (first_result, second_result)
-    assert sum(result.ok for result in results) == 1
-    rejected = next(result for result in results if not result.ok)
-    assert rejected.code == "claude_turn_already_running"
+    assert all(result.ok for result in results)
+    queued = [result for result in results if (result.result or {}).get("queued")]
+    assert len(queued) == 1
     await _wait_until(lambda: len(client.queries) == 1)
 
     interrupted = await runtime.interrupt_session("sess_concurrent")
-
     assert interrupted.ok is True
     assert runtime._sessions["sess_concurrent"].execution is None
 
@@ -5120,8 +5119,9 @@ def test_claude_scheduled_approval_uses_new_turn_and_keeps_waiting_state() -> No
             execution = runtime._sessions["timer"].execution
             assert execution.turn_id != original.result["turnId"]
             assert host.session_state_updates[-1]["status"] == "waiting_approval"
-            rejected = await runtime.start_turn("timer", "native_timer", "hello")
-            assert not rejected.ok
+            queued_result = await runtime.start_turn("timer", "native_timer", "hello")
+            assert queued_result.ok is True
+            assert (queued_result.result or {}).get("queued") is True
             await runtime.respond_interaction(
                 "timer", host.notice_upserts[0].notice_id, "approve"
             )
