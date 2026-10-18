@@ -133,7 +133,7 @@ function MarkdownBody({
                 <span
                   role="button"
                   tabIndex={0}
-                  className="inline-flex max-w-full items-baseline gap-0.5 rounded-none bg-transparent p-0 align-baseline text-[1em] text-inherit underline underline-offset-2 hover:text-foreground"
+                  className="inline-flex max-w-full items-baseline gap-0.5 rounded-none bg-transparent p-0 align-baseline text-[1em] text-blue-600 underline underline-offset-2 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                   onClick={() => openSessionFilePreview(token, session, previewPath, openFilePreview)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
@@ -180,7 +180,7 @@ function MarkdownBody({
               <span
                 role="button"
                 tabIndex={0}
-                className="inline-flex max-w-full items-baseline gap-0.5 align-baseline text-left underline underline-offset-2 hover:text-foreground"
+                className="inline-flex max-w-full items-baseline gap-0.5 align-baseline text-left text-blue-600 underline underline-offset-2 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                 onClick={() => openSessionFilePreview(token, session, path, openFilePreview)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
