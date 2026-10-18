@@ -39,9 +39,11 @@ import {
 import { dashboardApi } from "@/features/dashboard/api"
 import type { SessionView } from "@/features/dashboard/types"
 import { apiUrl } from "@/lib/api"
+import { downloadBlob } from "@/lib/download"
 import { openNativeFilePreviewWindow } from "@/lib/file-preview-window"
 import { cn } from "@/lib/utils"
 import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 
 type MessageAttachmentsProps = {
   token: string
@@ -144,6 +146,7 @@ function MessageAttachmentItem({
   onImageReady: (image: PreviewImage) => void
   onPreview: (image: PreviewImage) => void
 }) {
+  const t = useTranslations("dashboard.new")
   const name = attachment.name || attachment.fileId
   const mediaType = attachment.mediaType || ""
   const sessionAttachmentUrl = attachmentUrl?.(attachment.fileId)
@@ -168,13 +171,15 @@ function MessageAttachmentItem({
     ? apiUrl(attachment.downloadUrl)
     : sourceUrl
   const downloadAttachment = downloadUrl
-    ? () => {
-        const anchor = document.createElement("a")
-        anchor.href = downloadUrl
-        anchor.download = resolvedName
-        document.body.appendChild(anchor)
-        anchor.click()
-        anchor.remove()
+    ? async () => {
+        try {
+          const blob = await dashboardApi.downloadBlob(token, downloadUrl)
+          downloadBlob(blob, resolvedName)
+        } catch (error) {
+          toast.error(t("downloadFailed"), {
+            description: error instanceof Error ? error.message : undefined,
+          })
+        }
       }
     : undefined
   const previewTarget = attachment.path || openUrl

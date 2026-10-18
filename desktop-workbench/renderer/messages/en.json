@@ -427,6 +427,7 @@
       "sendTask": "Send task",
       "agent": "Agent",
       "createFailed": "Failed to create session.",
+      "downloadFailed": "Download failed",
       "attachmentOnlyPrompt": "(No text content.)",
       "imagePreview": {
         "close": "Close",

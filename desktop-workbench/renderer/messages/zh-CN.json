@@ -427,6 +427,7 @@
       "sendTask": "发送任务",
       "agent": "Agent",
       "createFailed": "无法创建会话。",
+      "downloadFailed": "下载失败",
       "attachmentOnlyPrompt": "（无文字内容。）",
       "imagePreview": {
         "close": "关闭",
