@@ -70,6 +70,13 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import android.content.ContentValues
+import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.widget.Toast
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -84,6 +91,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.agentsanywhere.app.R
 import com.agentsanywhere.app.feature.sessiondetail.MessageAuthor
+import com.agentsanywhere.app.feature.sessiondetail.DownloadedAttachment
 import com.agentsanywhere.app.feature.sessiondetail.SessionDetailController
 import com.agentsanywhere.app.feature.sessiondetail.RuntimeNotice
 import com.agentsanywhere.app.feature.sessiondetail.RuntimeNoticeAction
@@ -98,6 +106,7 @@ import com.composables.icons.lucide.ArrowDown
 import com.composables.icons.lucide.Bot
 import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.CircleAlert
+import com.composables.icons.lucide.Download
 import com.composables.icons.lucide.Clock
 import com.composables.icons.lucide.FilePenLine
 import com.composables.icons.lucide.Hammer
@@ -107,9 +116,11 @@ import com.composables.icons.lucide.SquareArrowOutUpRight
 import com.composables.icons.lucide.SquareTerminal
 import com.composables.icons.lucide.WifiOff
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 private const val SESSION_WELCOME_WRITE_MS = 58L
@@ -1447,6 +1458,8 @@ private fun UserAttachmentStrip(
     alignEnd: Boolean = true,
 ) {
     if (attachments.isEmpty()) return
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     Column(
         horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1468,6 +1481,28 @@ private fun UserAttachmentStrip(
                     attachment = attachment,
                     darkMode = darkMode,
                     onOpen = { onOpenAttachment(attachment) },
+                    onDownload = {
+                        scope.launch {
+                            controller.downloadAttachment(sessionId, attachment)
+                                .onSuccess { downloaded ->
+                                    saveAttachmentToDownloads(context, downloaded)
+                                        .onSuccess {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.session_attachment_saved),
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        }
+                                        .onFailure {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.session_attachment_download_failed),
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        }
+                                }
+                        }
+                    },
                 )
             }
         }
@@ -1479,6 +1514,7 @@ private fun UserFileAttachmentCard(
     attachment: TimelineAttachment,
     darkMode: Boolean,
     onOpen: () -> Unit,
+    onDownload: (() -> Unit)? = null,
 ) {
     val colors = LocalAAColors.current
     val iconRes = if (darkMode) R.drawable.ic_attachment_file_white else R.drawable.ic_attachment_file_black
@@ -1522,6 +1558,50 @@ private fun UserFileAttachmentCard(
                 fontSize = 11.sp,
                 maxLines = 1,
             )
+        }
+        if (onDownload != null) {
+            Icon(
+                imageVector = Lucide.Download,
+                contentDescription = null,
+                tint = colors.muted,
+                modifier = Modifier
+                    .size(20.dp)
+                    .noRippleClickable { onDownload() },
+            )
+        }
+    }
+}
+
+private suspend fun saveAttachmentToDownloads(
+    context: Context,
+    downloaded: DownloadedAttachment,
+): Result<Unit> = withContext(Dispatchers.IO) {
+    runCatching {
+        val displayName = downloaded.name
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .ifBlank { "agents-anywhere-${System.currentTimeMillis()}" }
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+            put(
+                MediaStore.Downloads.MIME_TYPE,
+                downloaded.mediaType.ifBlank { "application/octet-stream" },
+            )
+        }
+        val resolver = context.contentResolver
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        }
+        val uri = resolver.insert(collection, values) ?: error("Unable to create download")
+        try {
+            resolver.openOutputStream(uri, "w")?.use { out -> out.write(downloaded.bytes) }
+                ?: error("Unable to open download")
+        } catch (error: Throwable) {
+            resolver.delete(uri, null, null)
+            throw error
         }
     }
 }

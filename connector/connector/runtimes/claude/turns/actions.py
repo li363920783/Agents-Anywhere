@@ -76,10 +76,20 @@ class ClaudeTurnActionHandler:
 
         async with session.execution_lock:
             if session.execution is not None:
+                active = session.execution
+                if active.queued_content is not None:
+                    return RuntimeOperationResult(
+                        ok=False,
+                        code="claude_turn_queue_full",
+                        message="Claude runtime already has a queued turn for this session",
+                    )
+                active.queued_content = content
+                active.queued_attachments = attachments
+                active.queued_client_message_id = client_message_id
+                active.queued_selections = effective_selections
                 return RuntimeOperationResult(
-                    ok=False,
-                    code="claude_turn_already_running",
-                    message="Claude runtime already has an active turn for this session",
+                    ok=True,
+                    result={"queued": True, "externalSessionId": session.external_session_id},
                 )
             execution = ClaudeExecution(
                 turn_id=f"turn_claude_{secrets.token_urlsafe(12)}"

@@ -165,7 +165,13 @@ function MarkdownBody({
               : parseInlineFileRef(childText)
             if (!path || !token || !session) {
               return (
-                <a href={href} target="_blank" rel="noreferrer" {...props}>
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 underline underline-offset-2 dark:text-blue-400"
+                  {...props}
+                >
                   {children}
                 </a>
               )

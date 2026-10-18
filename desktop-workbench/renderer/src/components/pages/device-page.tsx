@@ -108,6 +108,7 @@ type DeviceSession = {
   runtime: string
   title?: string | null
   cwd?: string | null
+  gitBranch?: string | null
   status: "idle" | "waiting" | "pending" | "running" | "stopping" | "waiting_approval" | "error" | "blocked"
   takeover: boolean
   pinned: boolean
@@ -182,7 +183,7 @@ function SessionRow({
 }) {
   const t = useTranslations("dashboard.device")
   return (
-    <div className="flex w-full items-center gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-accent/40">
+    <div className="flex w-full items-start gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-accent/40">
       {selectMode ? (
         <Checkbox
           checked={selected}
@@ -207,9 +208,21 @@ function SessionRow({
       <button
         type="button"
         onClick={selectMode ? () => onSelectChange(!selected) : onClick}
-        className="min-w-0 flex-1 truncate text-left text-sm"
+        className="min-w-0 flex-1 text-left text-sm"
       >
-        {session.title ?? t("untitled")}
+        <span className="block truncate">{session.title ?? t("untitled")}</span>
+        {session.cwd || session.gitBranch ? (
+          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            {session.cwd ? (
+              <span className="truncate">{session.cwd.split(/[\\/]/).filter(Boolean).pop()}</span>
+            ) : null}
+            {session.gitBranch ? (
+              <span className="shrink-0 truncate rounded bg-muted px-1.5 font-mono text-[10px] leading-4">
+                {session.gitBranch}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
       </button>
       <span className="shrink-0 text-xs text-muted-foreground">{formatSessionTime(session)}</span>
     </div>
@@ -248,6 +261,7 @@ function mergeRealSession(prev: DeviceSession | undefined, session: RealSessionV
     runtime: prev?.runtime ?? session.runtime,
     title: session.title,
     cwd: session.cwd,
+    gitBranch: (session as { gitBranch?: string | null }).gitBranch ?? null,
     status: session.status,
     takeover: session.takeover,
     pinned: session.pinned,

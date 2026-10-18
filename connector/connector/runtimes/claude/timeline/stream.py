@@ -76,6 +76,14 @@ class ClaudeStreamAccumulator:
             return None
         return stable_message_item_id(session, self.partial_message_id)
 
+    def current_text(self) -> str | None:
+        if not self.partial_text_blocks:
+            return None
+        return "".join(
+            self.partial_text_blocks[index]
+            for index in sorted(self.partial_text_blocks)
+        ) or None
+
     def next_final_revision(self) -> int:
         if self.partial_revision <= 0:
             return 1

@@ -11,6 +11,7 @@ data class RemoteSession(
     val externalSessionId: String?,
     val title: String?,
     val cwd: String?,
+    val gitBranch: String?,
     val status: String,
     val takeover: Boolean,
     val pinned: Boolean,

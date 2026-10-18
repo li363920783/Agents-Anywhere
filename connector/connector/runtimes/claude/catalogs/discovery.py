@@ -7,6 +7,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from connector.logging import logger
+from connector.runtimes.claude.domain.permissions import (
+    claude_default_permission_selection_id,
+)
 from connector.runtimes.claude.domain.session import ClaudeSession
 from connector.runtimes.claude.sdk.client import (
     SdkLoader,
@@ -17,6 +20,7 @@ from connector.runtimes.claude.sdk.client import (
     maybe_await,
 )
 from connector.runtimes.claude.sdk.settings import (
+    claude_settings_fingerprint,
     create_gateway_settings_file,
     remove_gateway_settings_file,
 )
@@ -36,6 +40,10 @@ class ClaudeModelDiscovery:
     This is the same list the CLI shows in `/model`, so the Web picker follows
     CLI upgrades and account entitlements instead of a hand-maintained table.
     Discovery only performs the control handshake; no prompt is sent.
+
+    The reported list also depends on the aliases the user's Claude Code
+    settings remap (see `sdk/settings.py`), so a settings change invalidates
+    the cache immediately instead of at the next TTL expiry.
     """
 
     config_values: Mapping[str, Any]
@@ -44,6 +52,7 @@ class ClaudeModelDiscovery:
     _models: tuple[dict[str, Any], ...] | None = field(default=None, init=False)
     _expires_at: float = field(default=0.0, init=False)
     _attempted: bool = field(default=False, init=False)
+    _settings_fingerprint: str | None = field(default=None, init=False)
     _inflight: asyncio.Task[tuple[dict[str, Any], ...] | None] | None = field(
         default=None,
         init=False,
@@ -58,6 +67,11 @@ class ClaudeModelDiscovery:
         return self._models or ()
 
     async def models(self) -> tuple[dict[str, Any], ...] | None:
+        fingerprint = claude_settings_fingerprint()
+        if fingerprint != self._settings_fingerprint:
+            self._settings_fingerprint = fingerprint
+            self._attempted = False
+            self._expires_at = 0.0
         if self._attempted and self.clock() < self._expires_at:
             return self._models
         if self._inflight is None:
@@ -107,7 +121,13 @@ class ClaudeModelDiscovery:
             options = build_sdk_options(
                 sdk,
                 self.config_values,
-                ClaudeSession(session_id="claude-model-discovery"),
+                ClaudeSession(
+                    session_id="claude-model-discovery",
+                    # Claude Code refuses to start as root without an explicit
+                    # permission mode, so a handshake that runs no tools still
+                    # has to name one.
+                    selections={"permission": claude_default_permission_selection_id()},
+                ),
                 settings_path=settings_path,
             )
             client = client_cls(options=options)

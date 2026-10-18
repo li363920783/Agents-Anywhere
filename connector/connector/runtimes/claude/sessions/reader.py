@@ -753,12 +753,14 @@ def _sdk_session_metadata(session: Any) -> dict[str, Any]:
         "last_modified",
         "file_size",
         "created_at",
-        "git_branch",
         "tag",
     ):
         value = _attr(session, key)
         if value is not None:
             metadata[key] = value
+    branch = _attr(session, "git_branch")
+    if isinstance(branch, str) and branch and branch != "HEAD":
+        metadata["git_branch"] = branch
     return metadata
 
 

@@ -64,6 +64,7 @@ export type AppPage = "home" | "session" | "settings" | "admin" | "mobile-connec
 
 export type WorkspaceSessionView = DemoSessionView & {
   projectId?: string | null
+  gitBranch?: string | null
 }
 
 type SessionView = WorkspaceSessionView
@@ -219,6 +220,7 @@ function mapSession(session: RealSessionView): SessionView {
     externalSessionId: session.externalSessionId,
     title: session.title || "Untitled session",
     cwd: session.cwd,
+    gitBranch: (session as { gitBranch?: string | null }).gitBranch ?? null,
     status: session.status,
     takeover: session.takeover,
     pinned: session.pinned,

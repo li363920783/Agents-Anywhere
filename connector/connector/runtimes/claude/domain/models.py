@@ -198,7 +198,6 @@ def _selection_candidates(
 
 def _cli_model_item(item: Mapping[str, Any]) -> RuntimeModelItem:
     model_id = str(item["value"])
-    display_name = item.get("displayName")
     description = item.get("description")
     metadata: dict[str, Any] = {"source": "claude-code.initialize"}
     resolved_model = item.get("resolvedModel")
@@ -209,9 +208,7 @@ def _cli_model_item(item: Mapping[str, Any]) -> RuntimeModelItem:
             metadata[key] = item[key]
     return RuntimeModelItem(
         id=model_id,
-        title=display_name
-        if isinstance(display_name, str) and display_name
-        else model_id,
+        title=_cli_model_title(item, model_id),
         selection_id=protocol_selection_id(
             "claude",
             "model",
@@ -221,6 +218,20 @@ def _cli_model_item(item: Mapping[str, Any]) -> RuntimeModelItem:
         reasoning_items=_reasoning_items(model_id, _cli_effort_ids(item)),
         metadata=metadata,
     )
+
+
+def _cli_model_title(item: Mapping[str, Any], model_id: str) -> str:
+    """Name a CLI entry after the model it resolves to.
+
+    An alias can be remapped to a third-party model, and the CLI labels it
+    either by the alias or by the model it already resolves to, so the resolved
+    id is the only name that matches what a session will actually run.
+    """
+
+    for candidate in (item.get("resolvedModel"), item.get("displayName"), model_id):
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    return model_id
 
 
 def _cli_effort_ids(item: Mapping[str, Any]) -> tuple[str, ...]:

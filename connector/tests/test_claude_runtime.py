@@ -2151,9 +2151,9 @@ async def _test_claude_runtime_lists_models_reported_by_claude_code() -> None:
         "haiku",
         "claude-local-test",
     ]
-    assert catalog.revision == 1004
+    assert catalog.revision == 1006
     default = catalog.models[0]
-    assert default.title == "Default (recommended)"
+    assert default.title == "claude-opus-5-5[1m]"
     assert default.description == "Opus 5.5 with 1M context"
     assert default.metadata["source"] == "claude-code.initialize"
     assert default.metadata["resolvedModel"] == "claude-opus-5-5[1m]"
@@ -2161,6 +2161,9 @@ async def _test_claude_runtime_lists_models_reported_by_claude_code() -> None:
     assert [item.id for item in default.reasoning_items] == ["low", "high", "max"]
     assert default.reasoning_items[1].title == "High"
     assert catalog.models[3].reasoning_items == ()
+    # The CLI labels an entry by the alias, but the picker names the model that
+    # a selection will actually run.
+    assert catalog.models[3].title == "claude-haiku-4-5-20251001"
     assert catalog.models[4].metadata["custom"] is True
 
     await runtime.list_model_catalog(query="haiku")
@@ -2169,6 +2172,9 @@ async def _test_claude_runtime_lists_models_reported_by_claude_code() -> None:
     assert options.kwargs["cli_path"] == "/opt/claude/bin/claude"
     assert options.kwargs["env"] == {"EXAMPLE": "1"}
     assert "model" not in options.kwargs
+    # Claude Code refuses to start as root without an explicit permission mode,
+    # so the discovery handshake has to name one.
+    assert options.kwargs["permission_mode"] == "default"
     assert discovery.instances[0].connected is True
     assert discovery.instances[0].disconnected is True
     assert discovery.instances[0].queries == []
@@ -2220,7 +2226,9 @@ async def _test_claude_runtime_resolves_cli_selection_before_first_catalog_read(
             ClaudeSDKClient=_DiscoveryClientType(server_info={"models": _CLI_MODELS})
         )
     ).list_model_catalog(query="opus")
-    selection_id = listed.models[0].selection_id
+    selection_id = next(
+        model.selection_id for model in listed.models if model.id == "opus[1m]"
+    )
 
     client = _FakeClaudeClient(
         messages=[SimpleNamespace(type="result", session_id="claude_restart")]
@@ -3290,13 +3298,12 @@ async def _test_claude_runtime_rejects_concurrent_start_for_one_session() -> Non
     )
 
     results = (first_result, second_result)
-    assert sum(result.ok for result in results) == 1
-    rejected = next(result for result in results if not result.ok)
-    assert rejected.code == "claude_turn_already_running"
+    assert all(result.ok for result in results)
+    queued = [result for result in results if (result.result or {}).get("queued")]
+    assert len(queued) == 1
     await _wait_until(lambda: len(client.queries) == 1)
 
     interrupted = await runtime.interrupt_session("sess_concurrent")
-
     assert interrupted.ok is True
     assert runtime._sessions["sess_concurrent"].execution is None
 
@@ -3547,6 +3554,45 @@ async def _test_claude_runtime_materializes_attachments_for_turn_start() -> None
 
 def test_claude_runtime_tool_approval_round_trips_to_sdk() -> None:
     asyncio.run(_test_claude_runtime_tool_approval_round_trips_to_sdk())
+
+
+def test_claude_runtime_bypass_selection_allows_tools_without_a_notice() -> None:
+    asyncio.run(_test_claude_runtime_bypass_selection_allows_tools_without_a_notice())
+
+
+async def _test_claude_runtime_bypass_selection_allows_tools_without_a_notice() -> None:
+    host = _RecordingHost()
+    client = _ApprovalClaudeClient()
+    runtime = _runtime(host=host, client=client)
+
+    bypass = next(
+        permission
+        for permission in (await runtime.list_permission_catalog()).permissions
+        if permission.id == "bypassPermissions"
+    )
+
+    result = await runtime.start_turn(
+        "sess_bypass",
+        "claude_session_bypass",
+        "run ls",
+        selections={"permission": bypass.selection_id},
+    )
+    task = runtime._sessions["sess_bypass"].active_task
+
+    assert result.ok is True
+    assert task is not None
+    await task
+
+    # Claude Code auto-approves for this mode and never consults the callback,
+    # but it refuses the mode when the Connector runs as root, so the callback
+    # has to answer instead of prompting.
+    assert client.options.kwargs["permission_mode"] == "bypassPermissions"
+    assert host.notice_upserts == []
+    assert "waiting_approval" not in [
+        update["status"] for update in host.session_state_updates
+    ]
+    assert client.permission_results[0].behavior == "allow"
+
 
 
 async def _test_claude_runtime_tool_approval_round_trips_to_sdk() -> None:
@@ -5073,8 +5119,9 @@ def test_claude_scheduled_approval_uses_new_turn_and_keeps_waiting_state() -> No
             execution = runtime._sessions["timer"].execution
             assert execution.turn_id != original.result["turnId"]
             assert host.session_state_updates[-1]["status"] == "waiting_approval"
-            rejected = await runtime.start_turn("timer", "native_timer", "hello")
-            assert not rejected.ok
+            queued_result = await runtime.start_turn("timer", "native_timer", "hello")
+            assert queued_result.ok is True
+            assert (queued_result.result or {}).get("queued") is True
             await runtime.respond_interaction(
                 "timer", host.notice_upserts[0].notice_id, "approve"
             )
