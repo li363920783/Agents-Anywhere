@@ -32,6 +32,7 @@ data class NewSessionDraft(
             title = title.orEmpty(),
             summary = "",
             cwd = cwd,
+            gitBranch = null,
             workspaceLabel = cwd.orEmpty(),
             runtime = runtimeType,
             runtimeLabel = runtimeLabel,
