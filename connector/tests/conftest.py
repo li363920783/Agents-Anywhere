@@ -16,6 +16,11 @@ def no_claude_user_settings(monkeypatch):
         "claude_user_settings_environment",
         lambda path=None: {},
     )
+    monkeypatch.setattr(
+        claude_settings,
+        "claude_user_credentials_environment",
+        lambda path=None: {},
+    )
 
 
 @pytest.fixture(autouse=True)
