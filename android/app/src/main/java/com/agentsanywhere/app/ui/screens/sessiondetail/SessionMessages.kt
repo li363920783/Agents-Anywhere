@@ -99,7 +99,6 @@ import com.composables.icons.lucide.Bot
 import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.CircleAlert
 import com.composables.icons.lucide.Clock
-import com.composables.icons.lucide.Download
 import com.composables.icons.lucide.FilePenLine
 import com.composables.icons.lucide.Hammer
 import com.composables.icons.lucide.Lucide
@@ -267,7 +266,6 @@ internal fun MessageList(
     onLoadOlder: () -> Unit,
     onPreviewAttachment: (TimelineAttachment) -> Unit,
     onOpenAttachment: (TimelineAttachment) -> Unit,
-    onDownloadAttachment: ((TimelineAttachment) -> Unit)? = null,
     onCopyMessage: (String) -> Unit,
     onShareReply: (List<String>) -> Unit,
     onOpenFile: (String) -> Unit,
@@ -469,7 +467,6 @@ internal fun MessageList(
                                 controller = controller,
                                 onPreviewAttachment = onPreviewAttachment,
                                 onOpenAttachment = onOpenAttachment,
-                                onDownloadAttachment = onDownloadAttachment,
                                 onCopyMessage = onCopyMessage,
                                 onOpenFile = onOpenFile,
                                 interaction = interactionByTarget[item.message.sourceItemId],
@@ -1158,7 +1155,6 @@ private fun TimelineMessageRow(
     controller: SessionDetailController,
     onPreviewAttachment: (TimelineAttachment) -> Unit,
     onOpenAttachment: (TimelineAttachment) -> Unit,
-    onDownloadAttachment: ((TimelineAttachment) -> Unit)? = null,
     onCopyMessage: (String) -> Unit,
     onOpenFile: (String) -> Unit,
     interaction: RuntimeNotice? = null,
@@ -1225,7 +1221,6 @@ private fun TimelineMessageRow(
                 controller = controller,
                 onPreviewAttachment = onPreviewAttachment,
                 onOpenAttachment = onOpenAttachment,
-                                onDownloadAttachment = onDownloadAttachment,
                 onOpenFile = onOpenFile,
             )
             MessageAuthor.Tool -> PlatformMessageContent(
@@ -1235,7 +1230,6 @@ private fun TimelineMessageRow(
                 controller = controller,
                 onPreviewAttachment = onPreviewAttachment,
                 onOpenAttachment = onOpenAttachment,
-                                onDownloadAttachment = onDownloadAttachment,
             )
         }
     }
@@ -1249,7 +1243,6 @@ private fun AgentMessageContent(
     controller: SessionDetailController,
     onPreviewAttachment: (TimelineAttachment) -> Unit,
     onOpenAttachment: (TimelineAttachment) -> Unit,
-    onDownloadAttachment: ((TimelineAttachment) -> Unit)? = null,
     onOpenFile: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1261,7 +1254,6 @@ private fun AgentMessageContent(
             controller = controller,
             onPreviewAttachment = onPreviewAttachment,
             onOpenAttachment = onOpenAttachment,
-                                onDownloadAttachment = onDownloadAttachment,
             alignEnd = false,
         )
     }
@@ -1275,7 +1267,6 @@ private fun PlatformMessageContent(
     controller: SessionDetailController,
     onPreviewAttachment: (TimelineAttachment) -> Unit,
     onOpenAttachment: (TimelineAttachment) -> Unit,
-    onDownloadAttachment: ((TimelineAttachment) -> Unit)? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (message.text.isNotBlank()) ToolPlaceholder(message, darkMode)
@@ -1286,7 +1277,6 @@ private fun PlatformMessageContent(
             controller = controller,
             onPreviewAttachment = onPreviewAttachment,
             onOpenAttachment = onOpenAttachment,
-                                onDownloadAttachment = onDownloadAttachment,
             alignEnd = false,
         )
     }
@@ -1300,7 +1290,6 @@ private fun UserBubble(
     controller: SessionDetailController,
     onPreviewAttachment: (TimelineAttachment) -> Unit,
     onOpenAttachment: (TimelineAttachment) -> Unit,
-    onDownloadAttachment: ((TimelineAttachment) -> Unit)? = null,
     onCopyMessage: (String) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -1332,7 +1321,6 @@ private fun UserBubble(
                     controller = controller,
                     onPreviewAttachment = onPreviewAttachment,
                     onOpenAttachment = onOpenAttachment,
-                                onDownloadAttachment = onDownloadAttachment,
                 )
                 if (text.isNotBlank()) {
                     Row(
@@ -1456,7 +1444,6 @@ private fun UserAttachmentStrip(
     controller: SessionDetailController,
     onPreviewAttachment: (TimelineAttachment) -> Unit,
     onOpenAttachment: (TimelineAttachment) -> Unit,
-    onDownloadAttachment: ((TimelineAttachment) -> Unit)? = null,
     alignEnd: Boolean = true,
 ) {
     if (attachments.isEmpty()) return
@@ -1481,7 +1468,6 @@ private fun UserAttachmentStrip(
                     attachment = attachment,
                     darkMode = darkMode,
                     onOpen = { onOpenAttachment(attachment) },
-                    onDownload = onDownloadAttachment?.let { { it(attachment) } },
                 )
             }
         }
@@ -1493,7 +1479,6 @@ private fun UserFileAttachmentCard(
     attachment: TimelineAttachment,
     darkMode: Boolean,
     onOpen: () -> Unit,
-    onDownload: (() -> Unit)?,
 ) {
     val colors = LocalAAColors.current
     val iconRes = if (darkMode) R.drawable.ic_attachment_file_white else R.drawable.ic_attachment_file_black
@@ -1536,16 +1521,6 @@ private fun UserFileAttachmentCard(
                 color = colors.muted,
                 fontSize = 11.sp,
                 maxLines = 1,
-            )
-        }
-        if (onDownload != null) {
-            Icon(
-                imageVector = Lucide.Download,
-                contentDescription = null,
-                tint = colors.muted,
-                modifier = Modifier
-                    .size(20.dp)
-                    .noRippleClickable { onDownload() },
             )
         }
     }

@@ -1715,7 +1715,6 @@ fun SessionDetailScreen(
                                 onLoadOlder = { loadOlderMessages() },
                                 onPreviewAttachment = { previewImage = AttachmentPreview.Remote(it) },
                                 onOpenAttachment = ::openAttachment,
-                                onDownloadAttachment = ::saveAttachment,
                                 onCopyMessage = ::copyMessageText,
                                 onShareReply = ::requestShare,
                                 onOpenFile = ::openReferencedFile,
