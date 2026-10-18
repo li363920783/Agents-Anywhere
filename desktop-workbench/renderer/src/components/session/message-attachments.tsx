@@ -164,6 +164,19 @@ function MessageAttachmentItem({
   const resolvedMediaType = deviceFile.mediaType || mediaType
   const resolvedSize = deviceFile.size ?? attachment.size
   const isImage = attachmentIsImage(resolvedName, resolvedMediaType)
+  const downloadUrl = attachment.downloadUrl
+    ? apiUrl(attachment.downloadUrl)
+    : sourceUrl
+  const downloadAttachment = downloadUrl
+    ? () => {
+        const anchor = document.createElement("a")
+        anchor.href = downloadUrl
+        anchor.download = resolvedName
+        document.body.appendChild(anchor)
+        anchor.click()
+        anchor.remove()
+      }
+    : undefined
   const previewTarget = attachment.path || openUrl
     ? {
         source: "attachment" as const,
@@ -255,6 +268,7 @@ function MessageAttachmentItem({
       name={resolvedName}
       mediaType={resolvedMediaType}
       onOpen={openAttachmentPreview ?? undefined}
+      onDownload={downloadAttachment}
       size={resolvedSize}
     />
   )
@@ -699,6 +713,7 @@ function FileAttachment({
   name,
   mediaType,
   onOpen,
+  onDownload,
   size,
   state = "done",
   statusText,
@@ -707,6 +722,7 @@ function FileAttachment({
   name: string
   mediaType: string
   onOpen?: () => void
+  onDownload?: () => void
   size?: number
   state?: "uploading" | "error" | "done"
   statusText?: string
@@ -725,14 +741,21 @@ function FileAttachment({
           {[details, pending ? "Pending" : null, statusText].filter(Boolean).join(" · ")}
         </AttachmentDescription>
       </AttachmentContent>
-      {onOpen ? (
+      {(onOpen || onDownload) ? (
         <>
           <AttachmentActions>
-            <AttachmentAction aria-label={`Open ${name}`} onClick={onOpen}>
-              <ExternalLink />
-            </AttachmentAction>
+            {onOpen ? (
+              <AttachmentAction aria-label={`Open ${name}`} onClick={onOpen}>
+                <ExternalLink />
+              </AttachmentAction>
+            ) : null}
+            {onDownload ? (
+              <AttachmentAction aria-label={`Download ${name}`} onClick={onDownload}>
+                <Download />
+              </AttachmentAction>
+            ) : null}
           </AttachmentActions>
-          <AttachmentTrigger aria-label={`Open ${name}`} onClick={onOpen} />
+          {onOpen ? <AttachmentTrigger aria-label={`Open ${name}`} onClick={onOpen} /> : null}
         </>
       ) : null}
     </Attachment>
