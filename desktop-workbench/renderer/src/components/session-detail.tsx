@@ -1358,17 +1358,10 @@ export function SessionDetail({
     actionId: string,
     input?: Record<string, unknown>,
   ) => {
-    if (!session || resolvingNoticeId || interactionTakeoverRef.current) return
+    if (!session || resolvingNoticeId) return
     setResolvingNoticeId(noticeId)
     setResolvingActionId(actionId)
     try {
-      if (!session.takeover) {
-        const confirmed = await new Promise<boolean>((resolve) => {
-          interactionTakeoverRef.current = { sessionId: session.id, resolve }
-          setPendingTakeover(true)
-        })
-        if (!confirmed) return
-      }
       const response = await dashboardApi.respondInteraction(token, session.id, noticeId, actionId, input)
       if (response.ok) {
         removeNoticeFromState(noticeId)
