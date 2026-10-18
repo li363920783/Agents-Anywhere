@@ -33,6 +33,7 @@ internal fun RemoteSession.toAgentSession(devicesById: Map<String, AgentDevice>)
         title = displayTitle,
         summary = summaryText(statusValue, cwd, connectorStatus),
         cwd = cwd,
+        gitBranch = gitBranch,
         workspaceLabel = workspace,
         runtime = runtimeType,
         runtimeLabel = runtimeLabels.primary,

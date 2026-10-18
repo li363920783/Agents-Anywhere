@@ -63,9 +63,10 @@ internal fun HomeProjectSessionRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            session.workingFolder()?.let { folder ->
+            val subtitleParts = listOfNotNull(session.workingFolder(), session.gitBranch)
+            if (subtitleParts.isNotEmpty()) {
                 Text(
-                    text = folder,
+                    text = subtitleParts.joinToString("  ·  "),
                     color = LocalAAColors.current.inkSoft,
                     fontSize = 11.sp,
                     maxLines = 1,
