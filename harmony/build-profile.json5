@@ -1,0 +1,50 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "/Users/limaolin/.ohos/config/default_harmony_SCmUg5K0NbeMd0KnMPXX7YR-CIVEDla8-cm_5PsP6MM=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001AE66F27D2E4A90C46E12A4FDDFED75860208B59A2494D86F18E5D532A0CB22147FE7A18FC09C4",
+          "profile": "/Users/limaolin/.ohos/config/default_harmony_SCmUg5K0NbeMd0KnMPXX7YR-CIVEDla8-cm_5PsP6MM=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "/Users/limaolin/.ohos/config/default_harmony_SCmUg5K0NbeMd0KnMPXX7YR-CIVEDla8-cm_5PsP6MM=.p12",
+          "storePassword": "0000001A58CE71E237F308D95C8BD5D487F6BB14A46DBB432A07D8FD49B7291A051F75F0BC3FB6F121E7"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "compatibleSdkVersion": "6.1.0(23)",
+        "runtimeOS": "HarmonyOS",
+        "targetSdkVersion": "26.0.0"
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug"
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

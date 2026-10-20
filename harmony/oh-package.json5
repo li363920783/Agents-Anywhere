@@ -1,0 +1,10 @@
+{
+  "name": "agents-anywhere-harmony",
+  "version": "1.0.0",
+  "description": "Agents Anywhere HarmonyOS client",
+  "main": "",
+  "author": "",
+  "license": "",
+  "modelVersion": "5.0.0",
+  "dependencies": {}
+}

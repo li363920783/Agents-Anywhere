@@ -1,0 +1,75 @@
+import { AuthUser } from './model/Auth';
+import { ApiClient } from './net/ApiClient';
+import { Prefs } from './store/Prefs';
+import { TokenVault } from './store/TokenVault';
+
+/** Process-wide app state: server URL, session token, signed-in user. */
+export class AppState {
+  private static _shared: AppState | null = null;
+  static get shared(): AppState {
+    if (AppState._shared === null) {
+      AppState._shared = new AppState();
+    }
+    return AppState._shared;
+  }
+
+  serverUrl: string = '';
+  token: string = '';
+  user: AuthUser | null = null;
+  restoring: boolean = false;
+
+  get signedIn(): boolean {
+    return this.token.length > 0;
+  }
+
+  /** Loads server URL + encrypted token; the token is decrypted off the UI thread. */
+  async restore(): Promise<void> {
+    if (this.restoring) {
+      return;
+    }
+    this.restoring = true;
+    try {
+      this.serverUrl = Prefs.getString(Prefs.keys.serverUrl, '');
+      if (this.serverUrl.length > 0) {
+        ApiClient.configure(this.serverUrl, '');
+      }
+      const token = await TokenVault.load();
+      if (token !== null && this.serverUrl.length > 0) {
+        this.token = token;
+        ApiClient.configure(this.serverUrl, token);
+        const me = await ApiClient.shared.get('/auth/me').catch(() => null);
+        if (me !== null) {
+          this.user = AuthUser.fromJson(me);
+        }
+      }
+    } finally {
+      this.restoring = false;
+    }
+  }
+
+  /** Persists a fresh sign-in and rebinds the HTTP client. */
+  async signIn(serverUrl: string, token: string, user: AuthUser): Promise<void> {
+    this.serverUrl = ApiClient.normalizeBase(serverUrl);
+    this.token = token;
+    this.user = user;
+    Prefs.putString(Prefs.keys.serverUrl, this.serverUrl);
+    Prefs.putString(Prefs.keys.userId, user.userId);
+    Prefs.putString(Prefs.keys.displayName, user.displayName);
+    if (user.email !== null) {
+      Prefs.putString(Prefs.keys.email, user.email as string);
+    }
+    Prefs.putString(Prefs.keys.role, user.role);
+    await TokenVault.save(token);
+    ApiClient.configure(this.serverUrl, token);
+    // Index gates Login vs MainTabs on this key; without it the UI stays on Login.
+    AppStorage.setOrCreate('aa_signed_in', true);
+  }
+
+  async signOut(): Promise<void> {
+    this.token = '';
+    this.user = null;
+    await TokenVault.clear();
+    ApiClient.reset();
+    AppStorage.setOrCreate('aa_signed_in', false);
+  }
+}
