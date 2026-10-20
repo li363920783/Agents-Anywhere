@@ -5476,3 +5476,35 @@ async def _wait_until(predicate: Any) -> None:
             return
         await asyncio.sleep(0)
     assert predicate()
+
+
+def test_session_title_drops_resume_preamble_and_pasted_payload() -> None:
+    from connector.runtimes.claude.sessions.reader import (
+        _clean_session_title,
+        _session_title,
+    )
+
+    # A `--resume` / compaction preamble is the first user message, not a name.
+    assert _clean_session_title(
+        "Below is a conversation log from a Claude Code coding session. Create a summary..."
+    ) is None
+    assert _clean_session_title("以下是一段来自 Claude Code 的对话记录") is None
+
+    # Templated prompts keep their pasted JSON payload out of the name.
+    assert _clean_session_title(
+        'You previously flagged these candidate vulnerabilities: [ { "filePath": "a/b.java" } ]'
+    ) == "You previously flagged these candidate vulnerabi..."
+    assert _clean_session_title('Review this change.\n```diff\n+x\n```') == "Review this change"
+
+    # Whitespace collapses and long titles are cut to the shared limit.
+    assert _clean_session_title("  spaced   out  title ") == "spaced out title"
+    assert _clean_session_title("x" * 80) == f"{'x' * 48}..."
+    assert _clean_session_title("   ") is None
+    assert _clean_session_title(None) is None
+
+    # A preamble in the preferred attribute does not shadow a usable fallback.
+    session = SimpleNamespace(
+        custom_title="Below is a conversation log from an earlier session",
+        first_prompt="Fix the login redirect",
+    )
+    assert _session_title(session) == "Fix the login redirect"

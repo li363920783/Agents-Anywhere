@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -234,7 +235,7 @@ class ClaudeSessionReader:
                     "history_cursor_missing": previous_cursor is None,
                     "previous_marker": previous_marker,
                 },
-                "sdk": _sdk_session_metadata(sdk_session),
+                "sdk": _sdk_session_metadata(sdk_session, cwd),
             },
         )
 
@@ -300,7 +301,9 @@ class ClaudeSessionReader:
             metadata={
                 "source": "claude.session.history",
                 "messageCount": len(messages),
-                "sdk": _sdk_session_metadata(info),
+                "sdk": _sdk_session_metadata(
+                    info, _string_attr(info, "cwd", "directory")
+                ),
             },
         )
 
@@ -724,11 +727,55 @@ def _cursor_offset(cursor: str | None) -> int:
     return max(offset, 0)
 
 
+_RESUME_PREAMBLE_PREFIXES = (
+    "below is a conversation log",
+    "以下是一段来自",
+)
+
+_SESSION_TITLE_MAX_CHARS = 48
+
+
+def _clean_session_title(raw: str | None) -> str | None:
+    """Turn a runtime-reported title into one short, readable line.
+
+    Claude Code titles a session from its first prompt, which for a resumed or
+    compacted session is the injected transcript preamble and for a templated
+    task still has the pasted payload attached. Neither reads as a session name,
+    so drop the former and cut the payload off the latter.
+    """
+    if raw is None:
+        return None
+    collapsed = " ".join(raw.split())
+    if not collapsed:
+        return None
+    lowered = collapsed.lower()
+    for prefix in _RESUME_PREAMBLE_PREFIXES:
+        if lowered.startswith(prefix):
+            return None
+    for marker in ("[{", '{ "', "```"):
+        index = collapsed.find(marker)
+        if index > 0:
+            collapsed = collapsed[:index]
+            break
+    collapsed = collapsed.strip().rstrip(":;,.-").strip()
+    if not collapsed:
+        return None
+    if len(collapsed) <= _SESSION_TITLE_MAX_CHARS:
+        return collapsed
+    return f"{collapsed[:_SESSION_TITLE_MAX_CHARS].rstrip()}..."
+
+
 def _session_title(session: Any) -> str | None:
     # Claude SDK-created sessions may update `summary` to the latest user
     # prompt after every turn. `first_prompt` is the stable fallback title;
     # `custom_title` also contains persisted Claude Code AI titles when present.
-    return _string_attr(session, "custom_title", "first_prompt", "summary", "title")
+    # Each candidate is cleaned on its own so a resume preamble in one attribute
+    # does not shadow a usable title in the next.
+    for name in ("custom_title", "first_prompt", "summary", "title"):
+        cleaned = _clean_session_title(_string_attr(session, name))
+        if cleaned is not None:
+            return cleaned
+    return None
 
 
 def _sync_marker(session: Any) -> str:
@@ -745,7 +792,7 @@ def _sync_marker(session: Any) -> str:
     return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _sdk_session_metadata(session: Any) -> dict[str, Any]:
+def _sdk_session_metadata(session: Any, cwd: str | None = None) -> dict[str, Any]:
     if session is None:
         return {}
     metadata: dict[str, Any] = {}
@@ -758,10 +805,31 @@ def _sdk_session_metadata(session: Any) -> dict[str, Any]:
         value = _attr(session, key)
         if value is not None:
             metadata[key] = value
-    branch = _attr(session, "git_branch")
+    # Prefer the workspace's live branch: the SDK records the branch the
+    # session started on, which goes stale after a mid-session git checkout.
+    branch = _live_git_branch(cwd) or _attr(session, "git_branch")
     if isinstance(branch, str) and branch and branch != "HEAD":
         metadata["git_branch"] = branch
     return metadata
+
+
+def _live_git_branch(cwd: str | None) -> str | None:
+    if not cwd:
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    branch = result.stdout.strip()
+    return branch or None
 
 
 def _history_turn_id(

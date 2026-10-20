@@ -192,16 +192,43 @@ def _message_text(content: Any) -> str:
 def _truncate_title(text: str) -> str:
     if len(text) <= DERIVED_SESSION_TITLE_MAX_CHARS:
         return text
-    return f"{text[:DERIVED_SESSION_TITLE_MAX_CHARS].rstrip()}..."
+    head = text[:DERIVED_SESSION_TITLE_MAX_CHARS].rstrip().rstrip(".")
+    return f"{head}..."
 
 
-def _client_session_title(title: str | None) -> str | None:
-    # Web / Desktop send the whole first prompt as the create-time title.
-    # Normalize it like a derived title so a pasted document never becomes a
-    # multi-kilobyte session name (Codex never reports a replacement title).
+# A `--resume` / compaction preamble is injected as the first user message, so
+# runtimes that title a session from its first prompt produce this as the title.
+_RESUME_PREAMBLE_PREFIXES = (
+    "below is a conversation log",
+    "以下是一段来自",
+)
+
+
+def _is_resume_preamble(text: str) -> bool:
+    lowered = text.lower()
+    return any(lowered.startswith(prefix) for prefix in _RESUME_PREAMBLE_PREFIXES)
+
+
+def _normalized_session_title(title: str | None) -> str | None:
+    """Collapse a reported title into one short, readable line.
+
+    Both paths use this: Web / Desktop send the whole first prompt at create
+    time, and connectors report the runtime's own first-prompt-derived title.
+    Prompt templates often carry a pasted payload (JSON, a fenced block) that
+    must not become the session name, and a resume preamble is not a name at
+    all — returning None lets the client fall back to the workspace.
+    """
     if title is None:
         return None
     collapsed = " ".join(title.split())
+    if not collapsed or _is_resume_preamble(collapsed):
+        return None
+    for marker in ("[{", '{ "', "```"):
+        index = collapsed.find(marker)
+        if index > 0:
+            collapsed = collapsed[:index]
+            break
+    collapsed = collapsed.strip().rstrip(":;,.-").strip()
     return _truncate_title(collapsed) if collapsed else None
 
 
