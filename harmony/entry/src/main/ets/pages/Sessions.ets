@@ -2,9 +2,10 @@ import { promptAction } from '@kit.ArkUI';
 import { SessionDetailParam } from '../core/model/Nav';
 import { ApiClient } from '../core/net/ApiClient';
 import { ApiError } from '../core/net/ApiError';
+import { DashboardWatcher, SESSIONS_KEY, UNREAD_KEY } from '../core/net/DashboardWatcher';
 import { Fmt } from '../core/util/Fmt';
-import { SessionListResponse, SessionView } from '../core/model/Session';
-import { BulkActionRequest, SessionMetaPatch } from '../core/model/Bodies';
+import { SessionView } from '../core/model/Session';
+import { SessionMetaPatch } from '../core/model/Bodies';
 import { ConnectorListResponse, ConnectorView } from '../core/model/Connector';
 import { Theme } from '../core/ui/Theme';
 
@@ -51,16 +52,22 @@ function isResumeLog(title: string | null): boolean {
 @Component
 export struct Sessions {
   @Consume('rootStack') rootStack: NavPathStack;
+  /**
+   * The whole workspace inventory, pushed by the dashboard socket. The paged
+   * `/sessions` endpoint only ever delivered the first 100 rows; the inventory
+   * is unpaginated and includes archived sessions, so it backs both tabs.
+   */
+  @StorageLink(SESSIONS_KEY) @Watch('onSessionsChanged') all: Array<SessionView> = [];
+  /** Unread count pushed alongside the inventory; also drives the launcher badge. */
+  @StorageLink(UNREAD_KEY) unread: number = 0;
   @State archived: boolean = false;
-  @State items: Array<SessionView> = [];
   @State groups: Array<ProjectGroup> = [];
   @State connectors: Array<ConnectorView> = [];
   @State deviceFilter: string = '';
   @State hideLogs: boolean = true;
   @State hiddenLogCount: number = 0;
   @State refreshing: boolean = false;
-  @State loading: boolean = false;
-  @State errorMsg: string = '';
+  @State loading: boolean = true;
   @State query: string = '';
   /** Names of project sections the user collapsed. */
   @State collapsed: Array<string> = [];
@@ -85,38 +92,20 @@ export struct Sessions {
     this.collapsed = next;
   }
 
-  async aboutToAppear(): Promise<void> {
-    await this.load();
+  onSessionsChanged(): void {
+    this.loading = false;
+    this.applyFilter();
   }
 
-  async load(): Promise<void> {
-    this.loading = true;
-    this.errorMsg = '';
-    try {
-      // `GET /sessions` is the paginated list; `/sessions/list` is the unpaginated
-      // workspace inventory and ignores `limit`.
-      const res = await ApiClient.shared.get(
-        `/sessions?archived=${this.archived}&limit=100`
-      );
-      const rows = SessionListResponse.fromJson(res).sessions;
-      rows.sort((a: SessionView, b: SessionView) => {
-        if (a.pinned !== b.pinned) {
-          return a.pinned ? -1 : 1;
-        }
-        const av = (a.lastActivityAt ?? a.lastItemAt ?? '');
-        const bv = (b.lastActivityAt ?? b.lastItemAt ?? '');
-        return av < bv ? 1 : -1;
-      });
-      this.items = rows;
-      await this.loadConnectors();
-      this.applyFilter();
-    } catch (e) {
-      const err = e as Error;
-      const msg = err instanceof ApiError ? err.message : 'load failed';
-      this.errorMsg = msg;
-    } finally {
+  async aboutToAppear(): Promise<void> {
+    // The socket is the list's only source, so make sure it is up even if the
+    // ability did not start it (sign-in after launch, or a dropped connection).
+    DashboardWatcher.shared.start();
+    if (this.all.length > 0) {
       this.loading = false;
     }
+    await this.loadConnectors();
+    this.applyFilter();
   }
 
   /** Device chips are best-effort: a failure just leaves "All devices" alone. */
@@ -150,8 +139,11 @@ export struct Sessions {
     const q = this.query.trim().toLowerCase();
     const groups: Array<ProjectGroup> = [];
     let hidden = 0;
-    for (let i = 0; i < this.items.length; i++) {
-      const item = this.items[i];
+    for (let i = 0; i < this.all.length; i++) {
+      const item = this.all[i];
+      if (item.archived !== this.archived) {
+        continue;
+      }
       if (this.deviceFilter.length > 0 && item.connectorId !== this.deviceFilter) {
         continue;
       }
@@ -188,30 +180,10 @@ export struct Sessions {
     this.groups = groups;
   }
 
-  private totalShown(): number {
-    let n = 0;
-    for (let i = 0; i < this.groups.length; i++) {
-      n += this.groups[i].items.length;
-    }
-    return n;
-  }
-
-  private async bulk(path: string, ids: string[]): Promise<void> {
-    try {
-      const body = new BulkActionRequest();
-      body.sessionIds = ids;
-      await ApiClient.shared.post(path, body);
-      await this.load();
-    } catch (e) {
-      const err = e as Error;
-      promptAction.showToast({ message: err instanceof ApiError ? err.message : 'action failed', duration: 1500 });
-    }
-  }
-
+  /** The dashboard socket pushes a fresh snapshot after every meta change. */
   private async patchMeta(id: string, patch: SessionMetaPatch): Promise<void> {
     try {
       await ApiClient.shared.patch(`/sessions/${id}/meta`, patch);
-      await this.load();
     } catch (e) {
       const err = e as Error;
       promptAction.showToast({ message: err instanceof ApiError ? err.message : 'patch failed', duration: 1500 });
@@ -225,7 +197,16 @@ export struct Sessions {
           .fontSize(Theme.fontTitle)
           .fontWeight(FontWeight.Bold)
           .fontColor(Theme.text)
-          .layoutWeight(1)
+        if (this.unread > 0) {
+          Text(`${this.unread} unread`)
+            .fontSize(Theme.fontTiny)
+            .fontColor(Theme.onAccent)
+            .backgroundColor(Theme.accent)
+            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+            .borderRadius(Theme.radiusPill)
+            .maxLines(1)
+        }
+        Blank().layoutWeight(1)
         Button(this.archived ? 'Archived' : 'Active')
           .fontSize(Theme.fontTiny)
           .height(30)
@@ -235,7 +216,7 @@ export struct Sessions {
           .borderRadius(Theme.radiusPill)
           .onClick(() => {
             this.archived = !this.archived;
-            void this.load();
+            this.applyFilter();
           })
       }
       .width(Theme.gutter)
@@ -274,20 +255,13 @@ export struct Sessions {
       .width(Theme.gutter)
       .padding({ top: 10 })
 
-      if (this.errorMsg.length > 0) {
-        Text(this.errorMsg)
-          .fontSize(Theme.fontSmall)
-          .fontColor(Theme.danger)
-          .width(Theme.gutter)
-          .padding(8)
-          .wordBreak(WordBreak.BREAK_ALL)
-      }
-
-      if (this.groups.length === 0 && !this.loading) {
+      if (this.groups.length === 0) {
         Column() {
-          Text(this.query.trim().length > 0
-            ? `No sessions match “${this.query.trim()}”`
-            : (this.archived ? 'No archived sessions' : 'No active sessions'))
+          Text(this.loading
+            ? 'Connecting…'
+            : (this.query.trim().length > 0
+              ? `No sessions match “${this.query.trim()}”`
+              : (this.archived ? 'No archived sessions' : 'No active sessions')))
             .fontSize(Theme.fontSmall)
             .fontColor(Theme.faint)
             .margin({ top: 60 })
@@ -313,7 +287,7 @@ export struct Sessions {
                     .swipeAction({
                       end: {
                         builder: () => {
-                          this.SwipePin(item)
+                          this.SwipeActions(item)
                         }
                       }
                     })
@@ -325,9 +299,10 @@ export struct Sessions {
             .layoutWeight(1)
           }
           .onRefreshing(() => {
-            void this.load().then(() => {
-              this.refreshing = false;
-            });
+            // Data arrives by push, so a pull means "resync the socket".
+            DashboardWatcher.shared.reconnect();
+            void this.loadConnectors();
+            this.refreshing = false;
           })
         }
         .layoutWeight(1)
@@ -472,17 +447,35 @@ export struct Sessions {
     })
   }
 
+  /**
+   * Swipe actions. `swipeAction.end` takes a single builder, so both actions
+   * live in one row rather than as separate swipe stops.
+   */
   @Builder
-  SwipePin(item: SessionView) {
-    Button(item.pinned ? 'Unpin' : 'Pin')
-      .fontSize(Theme.fontSmall)
-      .height(48)
-      .backgroundColor(Theme.raised)
-      .fontColor(Theme.text)
-      .onClick(() => {
-        const patch = new SessionMetaPatch();
-        patch.pinned = !item.pinned;
-        void this.patchMeta(item.id, patch);
-      })
+  SwipeActions(item: SessionView) {
+    Row() {
+      Button(item.archived ? 'Unarchive' : 'Archive')
+        .fontSize(Theme.fontSmall)
+        .height(48)
+        .backgroundColor(Theme.raised)
+        .fontColor(Theme.text)
+        .borderRadius(0)
+        .onClick(() => {
+          const patch = new SessionMetaPatch();
+          patch.archived = !item.archived;
+          void this.patchMeta(item.id, patch);
+        })
+      Button(item.pinned ? 'Unpin' : 'Pin')
+        .fontSize(Theme.fontSmall)
+        .height(48)
+        .backgroundColor(Theme.surface)
+        .fontColor(Theme.text)
+        .borderRadius(0)
+        .onClick(() => {
+          const patch = new SessionMetaPatch();
+          patch.pinned = !item.pinned;
+          void this.patchMeta(item.id, patch);
+        })
+    }
   }
 }

@@ -8,11 +8,15 @@ import { SettingsPage } from './SettingsPage';
 import { SessionDetailParam } from '../core/model/Nav';
 import { Theme } from '../core/ui/Theme';
 
+/** EntryAbility publishes a notification-tap target here. */
+const OPEN_SESSION_KEY = 'aa_open_session';
+
 @Entry
 @Component
 struct Index {
   @Provide('rootStack') rootStack: NavPathStack = new NavPathStack();
   @StorageLink('aa_signed_in') signedIn: boolean = false;
+  @StorageLink(OPEN_SESSION_KEY) @Watch('drainOpenSession') openSession: string = '';
   @State restoreDone: boolean = false;
 
   async aboutToAppear(): Promise<void> {
@@ -21,6 +25,21 @@ struct Index {
     }
     this.signedIn = AppState.shared.signedIn;
     this.restoreDone = true;
+    this.drainOpenSession();
+  }
+
+  /**
+   * A notification tap only names a session id; the route can only be pushed
+   * once restore has finished, so a cold start re-runs this after `restoreDone`.
+   */
+  private drainOpenSession(): void {
+    if (this.openSession.length === 0 || !this.signedIn) {
+      return;
+    }
+    const param = new SessionDetailParam();
+    param.id = this.openSession;
+    AppStorage.setOrCreate(OPEN_SESSION_KEY, '');
+    this.rootStack.pushPath(new NavPathInfo('SessionDetail', param));
   }
 
   // Each branch must root in NavDestination: the Navigation drops any other root,
@@ -99,6 +118,8 @@ struct MainTabs {
     })
   }
 
+  // The unread count lives in the Sessions header, not here: a `tabBar` builder
+  // re-runs but only renders its own text, so an added badge never appeared.
   @Builder
   TabItem(label: string, index: number) {
     Column() {

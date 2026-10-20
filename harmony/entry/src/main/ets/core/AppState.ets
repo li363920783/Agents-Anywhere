@@ -1,5 +1,6 @@
 import { AuthUser } from './model/Auth';
 import { ApiClient } from './net/ApiClient';
+import { DashboardWatcher } from './net/DashboardWatcher';
 import { Prefs } from './store/Prefs';
 import { TokenVault } from './store/TokenVault';
 
@@ -63,11 +64,13 @@ export class AppState {
     ApiClient.configure(this.serverUrl, token);
     // Index gates Login vs MainTabs on this key; without it the UI stays on Login.
     AppStorage.setOrCreate('aa_signed_in', true);
+    DashboardWatcher.shared.start();
   }
 
   async signOut(): Promise<void> {
     this.token = '';
     this.user = null;
+    DashboardWatcher.shared.stop();
     await TokenVault.clear();
     ApiClient.reset();
     AppStorage.setOrCreate('aa_signed_in', false);

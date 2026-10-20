@@ -1,12 +1,32 @@
 import { promptAction } from '@kit.ArkUI';
+import { common } from '@kit.AbilityKit';
 import { ApiClient } from '../core/net/ApiClient';
 import { AppState } from '../core/AppState';
+import { Notifier } from '../core/notify/Notifier';
 import { Prefs } from '../core/store/Prefs';
 import { Theme } from '../core/ui/Theme';
 
 @Component
 export struct SettingsPage {
   @Consume('rootStack') rootStack: NavPathStack;
+  @State notifyApproval: boolean = Prefs.getBool(Prefs.keys.notifyApproval, true);
+  @State notifyDone: boolean = Prefs.getBool(Prefs.keys.notifyDone, true);
+  /** OS-level switch; the two toggles below are inert while this is off. */
+  @State notifyGranted: boolean = true;
+
+  aboutToAppear(): void {
+    void Notifier.isEnabled().then((ok: boolean) => {
+      this.notifyGranted = ok;
+    });
+  }
+
+  private async askPermission(): Promise<void> {
+    const ok = await Notifier.requestEnable(getContext(this) as common.UIAbilityContext);
+    this.notifyGranted = ok;
+    if (!ok) {
+      promptAction.showToast({ message: 'Enable notifications in system settings', duration: 2000 });
+    }
+  }
 
   private async confirmSignOut(): Promise<void> {
     AlertDialog.show({
@@ -92,6 +112,94 @@ export struct SettingsPage {
             .layoutWeight(2)
         }
         .alignItems(VerticalAlign.Top)
+      }
+      .width(Theme.gutter)
+      .padding(16)
+      .backgroundColor(Theme.surface)
+      .borderRadius(Theme.radiusCard)
+      .alignItems(HorizontalAlign.Start)
+
+      Text('Notifications')
+        .fontSize(Theme.fontTiny)
+        .fontColor(Theme.faint)
+        .width(Theme.gutter)
+        .padding({ top: 20, bottom: 8 })
+
+      Column({ space: 14 }) {
+        Row() {
+          Column({ space: 3 }) {
+            Text('System permission')
+              .fontSize(Theme.fontSmall)
+              .fontColor(Theme.text)
+            Text(this.notifyGranted ? 'Notifications are allowed' : 'Blocked by the system — tap to allow')
+              .fontSize(Theme.fontTiny)
+              .fontColor(this.notifyGranted ? Theme.faint : Theme.warn)
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+
+          if (!this.notifyGranted) {
+            Text('Allow')
+              .fontSize(Theme.fontTiny)
+              .fontColor(Theme.accent)
+              .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+              .border({ width: 1, color: Theme.accent })
+              .borderRadius(Theme.radiusPill)
+          }
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+        .onClick(() => {
+          void this.askPermission();
+        })
+
+        Divider().color(Theme.border)
+
+        Row() {
+          Column({ space: 3 }) {
+            Text('Needs approval')
+              .fontSize(Theme.fontSmall)
+              .fontColor(Theme.text)
+            Text('A session is waiting for your confirmation')
+              .fontSize(Theme.fontTiny)
+              .fontColor(Theme.faint)
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+
+          Toggle({ type: ToggleType.Switch, isOn: this.notifyApproval })
+            .selectedColor(Theme.accent)
+            .onChange((v: boolean) => {
+              this.notifyApproval = v;
+              Prefs.putBool(Prefs.keys.notifyApproval, v);
+            })
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
+        Divider().color(Theme.border)
+
+        Row() {
+          Column({ space: 3 }) {
+            Text('Turn finished')
+              .fontSize(Theme.fontSmall)
+              .fontColor(Theme.text)
+            Text('An agent stopped working while you were away')
+              .fontSize(Theme.fontTiny)
+              .fontColor(Theme.faint)
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+
+          Toggle({ type: ToggleType.Switch, isOn: this.notifyDone })
+            .selectedColor(Theme.accent)
+            .onChange((v: boolean) => {
+              this.notifyDone = v;
+              Prefs.putBool(Prefs.keys.notifyDone, v);
+            })
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
       }
       .width(Theme.gutter)
       .padding(16)

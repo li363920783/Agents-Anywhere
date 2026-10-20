@@ -27,6 +27,11 @@
           "split",
           "floating"
         ],
+        // Keeps the dashboard socket alive while a turn runs, so its completion
+        // notification still fires when the app is in the background.
+        "backgroundModes": [
+          "dataTransfer"
+        ],
         "skills": [
           {
             "entities": [
@@ -42,6 +47,9 @@
     "requestPermissions": [
       {
         "name": "ohos.permission.INTERNET"
+      },
+      {
+        "name": "ohos.permission.KEEP_BACKGROUND_RUNNING"
       }
     ]
   }

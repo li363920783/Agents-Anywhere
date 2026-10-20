@@ -3,6 +3,8 @@ import { promptAction } from '@kit.ArkUI';
 import { ApiClient, UploadPart } from '../core/net/ApiClient';
 import { ApiError } from '../core/net/ApiError';
 import { RealtimeStream, RealtimeCallbacks } from '../core/net/RealtimeStream';
+import { DashboardWatcher } from '../core/net/DashboardWatcher';
+import { Notifier } from '../core/notify/Notifier';
 import { Json } from '../core/util/Json';
 import { Fmt } from '../core/util/Fmt';
 import { Snapshot, TimelineItem, SessionView, Notice, NoticeAction, ToolContent, FileChangeContent, MarkerContent } from '../core/model/Session';
@@ -51,12 +53,25 @@ export struct SessionDetail {
   private scroller: Scroller = new Scroller();
 
   aboutToAppear(): void {
+    // Suppress notifications for the session the user is actually reading, and
+    // drop the tray alert that led them here.
+    DashboardWatcher.shared.activeSessionId = this.sessionId;
+    void Notifier.clear(this.sessionId);
     void this.load();
   }
 
   aboutToDisappear(): void {
     this.stream?.stop();
     this.stream = null;
+    // Keep suppressing for a moment: `unread` is derived from seq vs last-read,
+    // so a message the user just sent here re-reads as unread, and that snapshot
+    // lands after this page is gone. Without the grace period the app would
+    // notify the user about their own send.
+    setTimeout(() => {
+      if (DashboardWatcher.shared.activeSessionId === this.sessionId) {
+        DashboardWatcher.shared.activeSessionId = '';
+      }
+    }, 10000);
   }
 
   private toast(msg: string): void {

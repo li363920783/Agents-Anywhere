@@ -10,6 +10,9 @@ interface PrefsKeys {
   role: string;
   onboarded: string;
   appearance: string;
+  notifyApproval: string;
+  notifyDone: string;
+  notifyAsked: string;
 }
 
 /** App preferences: server URL, recent servers, appearance. */
@@ -25,7 +28,10 @@ export class Prefs {
     email: 'email',
     role: 'role',
     onboarded: 'onboarded',
-    appearance: 'appearance'
+    appearance: 'appearance',
+    notifyApproval: 'notify_approval',
+    notifyDone: 'notify_done',
+    notifyAsked: 'notify_asked'
   };
 
   static init(context: common.UIAbilityContext): void {

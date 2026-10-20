@@ -16,8 +16,14 @@ export class BulkActionRequest {
   sessionIds: Array<string> = [];
 }
 
+/**
+ * `PATCH /sessions/{id}/meta`. Every field is nullable because the server reads
+ * null as "leave alone": sending both booleans on a pin would clear `archived`.
+ */
 export class SessionMetaPatch {
-  pinned: boolean = false;
+  title: string | null = null;
+  pinned: boolean | null = null;
+  archived: boolean | null = null;
 }
 
 export class MessageSendRequest {
