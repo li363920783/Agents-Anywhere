@@ -12,6 +12,11 @@ import { picker, fileIo } from '@kit.CoreFileKit';
 import { MarkdownView } from '../ui/MarkdownView';
 import { Theme } from '../core/ui/Theme';
 
+/** Body of an optimistic user bubble, shaped like the server's message payload. */
+class LocalMessageContent {
+  text: string = '';
+}
+
 @Component
 export struct SessionDetail {
   @Consume('rootStack') rootStack: NavPathStack;
@@ -23,6 +28,8 @@ export struct SessionDetail {
   @State takeover: boolean = false;
   @State takeoverBusy: boolean = false;
   @State atBottom: boolean = true;
+  /** Id of the optimistic bubble shown while a send is in flight. */
+  @State pendingId: string = '';
   @State connected: boolean = false;
   @State busy: boolean = false;
   @State loading: boolean = false;
@@ -300,7 +307,12 @@ export struct SessionDetail {
       case 'timeline.item_updated': {
         const item = Json.obj(payload, 'item');
         if (item !== null) {
-          this.mergeItem(TimelineItem.fromJson(item));
+          const parsed = TimelineItem.fromJson(item);
+          // The server echoed our own message: swap the optimistic bubble out.
+          if (parsed.role === 'user' && this.pendingId.length > 0) {
+            this.dropPending();
+          }
+          this.mergeItem(parsed);
         }
         break;
       }
@@ -372,6 +384,23 @@ export struct SessionDetail {
       return;
     }
     this.busy = true;
+    // Show the message immediately: the real item only arrives over the stream a
+    // few seconds later, and without a pending bubble the send looks like a no-op.
+    const clientMessageId = util.generateRandomUUID();
+    const pending = new TimelineItem();
+    pending.id = `local_${clientMessageId}`;
+    pending.sessionId = this.sessionId;
+    pending.type = 'message';
+    pending.role = 'user';
+    pending.status = 'pending';
+    pending.orderSeq = Number.MAX_SAFE_INTEGER;
+    const localContent = new LocalMessageContent();
+    localContent.text = content;
+    pending.content = localContent;
+    this.items.push(pending);
+    this.pendingId = pending.id;
+    this.composer = '';
+    this.scrollToBottom(30);
     try {
       const sendBody = new MessageSendRequest();
       sendBody.content = content;
@@ -390,21 +419,29 @@ export struct SessionDetail {
         }
         sendBody.attachments = attachments;
       }
-      sendBody.clientMessageId = util.generateRandomUUID();
+      sendBody.clientMessageId = clientMessageId;
       await ApiClient.shared.post(`/sessions/${this.sessionId}/runtime/messages`, sendBody);
-      this.composer = '';
       this.pendingParts = [];
       this.pendingCount = 0;
-      setTimeout(() => {
-        this.scroller.scrollEdge(Edge.Bottom);
-      }, 60);
     } catch (e) {
+      this.dropPending();
+      this.composer = content;
       const err = e as Error;
       const msg = err instanceof ApiError ? err.message : 'send failed';
       this.toast(msg);
     } finally {
       this.busy = false;
     }
+  }
+
+  /** Removes the optimistic bubble once the server's copy arrives (or the send fails). */
+  private dropPending(): void {
+    if (this.pendingId.length === 0) {
+      return;
+    }
+    const id = this.pendingId;
+    this.items = this.items.filter((x: TimelineItem) => x.id !== id);
+    this.pendingId = '';
   }
 
   private async setTakeover(next: boolean): Promise<void> {
