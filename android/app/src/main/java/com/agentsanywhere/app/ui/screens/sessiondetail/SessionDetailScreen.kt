@@ -1292,9 +1292,6 @@ fun SessionDetailScreen(
         openInteractions.filter { it.blocksSession(id) }
     }
     val runtimeBlocksSubmission = runtimeStatus in setOf(
-        SessionRuntimeStatus.Waiting,
-        SessionRuntimeStatus.Pending,
-        SessionRuntimeStatus.Running,
         SessionRuntimeStatus.Stopping,
         SessionRuntimeStatus.WaitingApproval,
         SessionRuntimeStatus.Blocked,
@@ -1612,6 +1609,10 @@ fun SessionDetailScreen(
             SessionRuntimeStatus.WaitingApproval,
             SessionRuntimeStatus.Blocked,
         ) &&
+            // Text in the composer mid-turn turns the primary button into Send
+            // (the message queues until the current turn finishes); an empty
+            // composer keeps the Stop button.
+            draft.isBlank() && attachments.isEmpty() &&
             // A command allowed mid-turn (e.g. /stop) takes the primary button.
             exactCommand?.allowed(runtimeStatus) != true
     )
@@ -1787,6 +1788,8 @@ fun SessionDetailScreen(
                         )
                         SessionDetailHeader(
                             title = state.session?.title ?: stringResource(R.string.session_title_fallback),
+                            cwd = state.session?.cwd,
+                            gitBranch = state.session?.gitBranch,
                             darkMode = darkMode,
                             onLeftClick = ::openRuntimeSettings,
                             onRightClick = { scope.launch { pagerState.animateScrollToPage(1) } },

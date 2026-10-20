@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,6 +34,8 @@ import com.agentsanywhere.app.ui.designsystem.noRippleClickable
 @Composable
 internal fun SessionDetailHeader(
     title: String,
+    cwd: String?,
+    gitBranch: String?,
     darkMode: Boolean,
     onLeftClick: () -> Unit,
     onRightClick: () -> Unit,
@@ -43,53 +46,76 @@ internal fun SessionDetailHeader(
     val border = if (darkMode) colors.border else Color(0xFFE8E5DE)
     val text = if (darkMode) Color(0xFFFAFAFA) else Color(0xFF2F302D)
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(58.dp)
-            .padding(horizontal = 18.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        HeaderImageButton(
-            resId = if (darkMode) {
-                R.drawable.ic_session_runtime_settings_dark
-            } else {
-                R.drawable.ic_session_runtime_settings_light
-            },
-            darkMode = darkMode,
-            onClick = onLeftClick,
-        )
         Row(
             modifier = Modifier
-                .width(224.dp)
-                .height(42.dp)
-                .shadow(18.dp, CircleShape, ambientColor = Color(0x0A000000), spotColor = Color(0x0A000000))
-                .clip(CircleShape)
-                .background(surface)
-                .border(1.dp, border, CircleShape)
+                .fillMaxWidth()
+                .height(58.dp)
                 .padding(horizontal = 18.dp),
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = title,
-                color = text,
-                fontSize = 15.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            HeaderImageButton(
+                resId = if (darkMode) {
+                    R.drawable.ic_session_runtime_settings_dark
+                } else {
+                    R.drawable.ic_session_runtime_settings_light
+                },
+                darkMode = darkMode,
+                onClick = onLeftClick,
+            )
+            Row(
+                modifier = Modifier
+                    .width(224.dp)
+                    .height(42.dp)
+                    .shadow(18.dp, CircleShape, ambientColor = Color(0x0A000000), spotColor = Color(0x0A000000))
+                    .clip(CircleShape)
+                    .background(surface)
+                    .border(1.dp, border, CircleShape)
+                    .padding(horizontal = 18.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = title,
+                    color = text,
+                    fontSize = 15.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            HeaderImageButton(
+                resId = if (darkMode) {
+                    R.drawable.ic_session_agent_button_dark
+                } else {
+                    R.drawable.ic_session_agent_button_light
+                },
+                darkMode = darkMode,
+                onClick = onRightClick,
             )
         }
-        HeaderImageButton(
-            resId = if (darkMode) {
-                R.drawable.ic_session_agent_button_dark
-            } else {
-                R.drawable.ic_session_agent_button_light
-            },
-            darkMode = darkMode,
-            onClick = onRightClick,
-        )
+        val contextLabel = listOfNotNull(
+            gitBranch?.takeIf { it.isNotBlank() },
+            cwd?.takeIf { it.isNotBlank() },
+        ).joinToString("  ·  ")
+        if (contextLabel.isNotEmpty()) {
+            Text(
+                text = contextLabel,
+                color = if (darkMode) Color(0xFFA1A1AA) else Color(0xFF7C7B76),
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .clip(CircleShape)
+                    .background(surface)
+                    .padding(horizontal = 12.dp, vertical = 3.dp),
+            )
+        }
     }
 }
 

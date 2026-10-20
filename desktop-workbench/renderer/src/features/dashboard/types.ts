@@ -143,6 +143,7 @@ export type SessionView = {
   externalSessionId: string | null;
   title: string | null;
   cwd: string | null;
+  gitBranch?: string | null;
   status: SessionStatusValue;
   takeover: boolean;
   pinned: boolean;

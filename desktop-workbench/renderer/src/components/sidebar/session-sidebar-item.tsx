@@ -75,8 +75,7 @@ export function SessionSidebarItem({
   const showCwd =
     sidebarShowsSessions &&
     !sidebarCompactSessions &&
-    Boolean(cwdName) &&
-    cwdName !== projectName
+    Boolean(cwdName)
   const [renameOpen, setRenameOpen] = React.useState(false)
   const [titleDraft, setTitleDraft] = React.useState(item.title ?? "")
   const [renaming, setRenaming] = React.useState(false)
@@ -169,19 +168,10 @@ export function SessionSidebarItem({
                     {meta}
                   </span>
                 ) : null}
-                {showCwd || item.gitBranch ? (
+                {showCwd ? (
                   <span className="flex w-full min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground/80">
-                    {showCwd ? (
-                      <>
-                        <FolderOpen className="size-3 shrink-0" />
-                        <span className="truncate">{cwdName}</span>
-                      </>
-                    ) : null}
-                    {item.gitBranch ? (
-                      <span className="shrink-0 truncate rounded bg-muted px-1 font-mono text-[10px]">
-                        {item.gitBranch}
-                      </span>
-                    ) : null}
+                    <FolderOpen className="size-3 shrink-0" />
+                    <span className="truncate">{cwdName}</span>
                   </span>
                 ) : null}
               </SidebarMenuButton>

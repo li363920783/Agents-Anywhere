@@ -26,6 +26,7 @@ import {
   type AttachedFile,
 } from "@/components/attachment-input"
 import { cn } from "@/lib/utils"
+import type { ComposerInsertion } from "@/components/workspace-context"
 import type {
   ProtocolCapabilitySet,
   ProtocolModelCatalog,
@@ -68,6 +69,30 @@ import {
 
 export type { AttachedFile }
 
+const COMPOSER_DRAFT_STORAGE_PREFIX = "agents-anywhere.sessionComposerDraft.v1."
+
+function composerDraftStorageKey(sessionId: string): string {
+  return `${COMPOSER_DRAFT_STORAGE_PREFIX}${sessionId}`
+}
+
+function readComposerDraft(sessionId: string): string {
+  try {
+    return window.localStorage.getItem(composerDraftStorageKey(sessionId)) ?? ""
+  } catch {
+    return ""
+  }
+}
+
+function writeComposerDraft(sessionId: string, value: string) {
+  try {
+    const key = composerDraftStorageKey(sessionId)
+    if (value) window.localStorage.setItem(key, value)
+    else window.localStorage.removeItem(key)
+  } catch {
+    // Draft persistence is best-effort; private contexts can still use the composer.
+  }
+}
+
 export function SessionComposer({
   token,
   session,
@@ -77,7 +102,7 @@ export function SessionComposer({
   sending,
   interrupting,
   takeoverBusy,
-  value,
+  composerInsertion,
   effectiveCapabilities,
   modelCatalog,
   permissionCatalog,
@@ -85,7 +110,7 @@ export function SessionComposer({
   commandsLoading = false,
   commandsError = false,
   onCommandQueryChange,
-  onValueChange,
+  consumeComposerInsertion,
   onSelectionChange,
   onSend,
   onInterrupt,
@@ -100,7 +125,7 @@ export function SessionComposer({
   sending: boolean
   interrupting: boolean
   takeoverBusy: boolean
-  value: string
+  composerInsertion: ComposerInsertion | null
   effectiveCapabilities: ProtocolCapabilitySet | null
   modelCatalog: ProtocolModelCatalog | null
   permissionCatalog: ProtocolPermissionCatalog | null
@@ -108,7 +133,7 @@ export function SessionComposer({
   commandsLoading?: boolean
   commandsError?: boolean
   onCommandQueryChange: (query: string | null) => void
-  onValueChange: (value: string) => void
+  consumeComposerInsertion: (id: number) => void
   onSelectionChange: (selections: { model?: string; permission?: string }) => Promise<boolean>
   onSend: (
     content: string,
@@ -123,8 +148,23 @@ export function SessionComposer({
   const tNew = useTranslations("dashboard.new")
   const composerRef = React.useRef<HTMLDivElement | null>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null)
-  const valueRef = React.useRef(value)
-  valueRef.current = value
+  const [localValue, setLocalValue] = React.useState<string>(() => readComposerDraft(session.id))
+  const valueRef = React.useRef(localValue)
+  valueRef.current = localValue
+
+  React.useEffect(() => {
+    writeComposerDraft(session.id, localValue)
+  }, [localValue, session.id])
+
+  React.useEffect(() => {
+    if (!composerInsertion || composerInsertion.sessionId !== session.id) return
+    setLocalValue((current) => {
+      const separator = current.trim().length > 0 && !/\s$/.test(current) ? " " : ""
+      return `${current}${separator}${composerInsertion.text}`
+    })
+    consumeComposerInsertion(composerInsertion.id)
+  }, [composerInsertion, consumeComposerInsertion, session.id])
+
   const pendingCommandRef = React.useRef(false)
   const sessionVisitRef = React.useRef({ id: session.id, sequence: 0 })
   if (sessionVisitRef.current.id !== session.id) {
@@ -173,8 +213,6 @@ export function SessionComposer({
     connectorOnline &&
     !sourceUnavailable &&
     !isDisconnected &&
-    !isWaiting &&
-    !isRunning &&
     !isStopping &&
     !isWaitingApproval &&
     !isBlocked
@@ -214,7 +252,7 @@ export function SessionComposer({
     !commandPending &&
     !interrupting &&
     acceptsUserInput
-  const hasInput = value.trim().length > 0 || attachments.length > 0
+  const hasInput = localValue.trim().length > 0 || attachments.length > 0
   const attachmentsReady = attachmentsAllowed && (attachments.length === 0 || (allUploaded && !uploadsPending && !uploadFailed))
   const activeSessionCanInterrupt = Boolean(
     connectorOnline &&
@@ -365,7 +403,7 @@ export function SessionComposer({
               : isError
                 ? tSession("errorPlaceholder")
                 : tSession("replyPlaceholder")
-  const slashIntent = parseSlashIntent(value)
+  const slashIntent = parseSlashIntent(localValue)
   // "/Users/me/file.ts" and other non-command slash text never opens the menu.
   const slashCandidate = slashIntent && commandLikeToken(slashIntent) ? slashIntent : null
   const commandQuery = slashCandidate?.command ?? null
@@ -386,19 +424,21 @@ export function SessionComposer({
           ? tSession("commandUnsupported")
           : commandsCapability.unavailableReason || tSession("commandBlocked_unavailable")
       : null
-  const showUnavailableMenu = commandsUnavailable !== null && attachments.length === 0 && menuDismissedFor !== value
+  const showUnavailableMenu = commandsUnavailable !== null && attachments.length === 0 && menuDismissedFor !== localValue
   const showCommandMenu =
     slashCandidate !== null &&
     catalogUsable &&
     slashCandidate.suffix === "" &&
     attachments.length === 0 &&
-    menuDismissedFor !== value &&
+    menuDismissedFor !== localValue &&
     (commandSuggestions.length > 0 || (!runtimeCommands.length && (commandsLoading || commandsError)))
   const highlightedCommand = commandSuggestions.length
     ? commandSuggestions[Math.min(activeCommandIndex, commandSuggestions.length - 1)]
     : null
   React.useEffect(() => { setActiveCommandIndex(0) }, [commandQuery])
-  const showInterruptAction = showInterrupt && mode.kind === "message" && !showCommandMenu
+  // While the turn is running, an empty composer shows Stop; with text it shows
+// Send (the message queues until the current turn finishes).
+  const showInterruptAction = showInterrupt && mode.kind === "message" && !showCommandMenu && !hasInput
   React.useEffect(() => {
     onCommandQueryChange(commandQuery)
   }, [commandQuery, onCommandQueryChange])
@@ -416,7 +456,7 @@ export function SessionComposer({
   }
   const canSubmitCommand = mode.kind === "command" && !commandPending && connectorOnline
   const canSubmitMessage =
-    canSend &&
+    (canSend || isRunning || isWaiting) &&
     session.takeover &&
     hasInput &&
     attachmentsReady &&
@@ -424,9 +464,9 @@ export function SessionComposer({
   const concurrentWriter = runtimeState?.error?.code === "DSH_CONCURRENT_WRITER_DETECTED"
   const updateValue = React.useCallback((nextValue: string) => {
     valueRef.current = nextValue
-    onValueChange(nextValue)
+    setLocalValue(nextValue)
     setCommandInputError(null)
-  }, [onValueChange])
+  }, [])
 
   const chooseCommand = (command: RuntimeCommand) => {
     const block = blockOf(command)
@@ -508,11 +548,11 @@ export function SessionComposer({
     }
     if (mode.kind === "command") {
       if (attachments.length) { setCommandInputError(tSession("commandAttachments")); return }
-      await runCommand(mode.command, value)
+      await runCommand(mode.command, valueRef.current)
       return
     }
     if (!canSubmitMessage) return
-    const text = value
+    const text = valueRef.current
     const files = attachments
     updateValue("")
     clear({ revokePreviews: false })
@@ -634,7 +674,7 @@ export function SessionComposer({
             {commandInputError ? <p role="alert" className="text-xs text-destructive">{commandInputError}</p> : null}
             <Textarea
               ref={textareaRef}
-              value={value}
+              value={localValue}
               onChange={(event) => updateValue(event.currentTarget.value)}
               role={catalogUsable ? "combobox" : undefined}
               aria-expanded={catalogUsable ? showCommandMenu : undefined}
@@ -645,7 +685,7 @@ export function SessionComposer({
                 if (event.nativeEvent.isComposing) return
                 if ((showCommandMenu || showUnavailableMenu) && event.key === "Escape") {
                   event.preventDefault()
-                  setMenuDismissedFor(value)
+                  setMenuDismissedFor(localValue)
                   return
                 }
                 if (showCommandMenu && highlightedCommand) {

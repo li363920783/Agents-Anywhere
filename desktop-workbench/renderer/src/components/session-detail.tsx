@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ArrowDown, ChevronDown, CircleAlert, Loader2, WifiOff } from "lucide-react"
+import { ArrowDown, ChevronDown, CircleAlert, FolderOpen, GitBranch, Loader2, WifiOff } from "lucide-react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -140,11 +140,6 @@ const SCROLL_TO_BOTTOM_PRUNE_DISTANCE = 180
 const INITIAL_SCROLL_LAYOUT_QUIET_MS = 120
 const INITIAL_SCROLL_LAYOUT_FALLBACK_MS = 900
 const SCROLL_TO_BOTTOM_PRUNE_CHECK_MS = 120
-const COMPOSER_DRAFT_STORAGE_PREFIX = "agents-anywhere.sessionComposerDraft.v1."
-type ComposerDraftState = {
-  sessionId: string
-  value: string
-}
 type SessionSourceErrorCode =
   | "session_archived"
   | "session_unavailable"
@@ -293,28 +288,6 @@ function runtimeStateWithSelectionRollback(
   return { ...nextState, selections }
 }
 
-function composerDraftStorageKey(sessionId: string): string {
-  return `${COMPOSER_DRAFT_STORAGE_PREFIX}${sessionId}`
-}
-
-function readComposerDraft(sessionId: string): string {
-  try {
-    return window.localStorage.getItem(composerDraftStorageKey(sessionId)) ?? ""
-  } catch {
-    return ""
-  }
-}
-
-function writeComposerDraft(sessionId: string, value: string) {
-  try {
-    const key = composerDraftStorageKey(sessionId)
-    if (value) window.localStorage.setItem(key, value)
-    else window.localStorage.removeItem(key)
-  } catch {
-    // Draft persistence is best-effort; private contexts can still use the composer.
-  }
-}
-
 export function SessionDetail({
   token,
   sessionId,
@@ -364,10 +337,6 @@ export function SessionDetail({
   const [composerHeight, setComposerHeight] = React.useState(144)
   const [timelineGroupOpenByKey, setTimelineGroupOpenByKey] = React.useState<Record<string, boolean>>({})
   const [timelineItemOpenById, setTimelineItemOpenById] = React.useState<Record<string, boolean>>({})
-  const [composerDraftState, setComposerDraftState] = React.useState<ComposerDraftState>(() => ({
-    sessionId,
-    value: readComposerDraft(sessionId),
-  }))
   const timelineRef = React.useRef<HTMLDivElement | null>(null)
   const timelineContentRef = React.useRef<HTMLDivElement | null>(null)
   const composerContainerRef = React.useRef<HTMLDivElement | null>(null)
@@ -468,7 +437,6 @@ export function SessionDetail({
     }
   }, [runtimeState, runtimeStatus, session, state?.eventCursor, state?.serverTime])
 
-  const composerDraft = composerDraftState.sessionId === sessionId ? composerDraftState.value : ""
   const isLocalOptimisticSession = isOptimisticSession(sessionId)
   const hasInitialSessionState = state !== null
 
@@ -678,31 +646,6 @@ export function SessionDetail({
       return { ...current, items: preserveOptimisticItems(serverItems, optimisticItems) }
     })
   }, [getOptimisticItems, getOptimisticSessionState, isLocalOptimisticSession, sessionId])
-
-  React.useEffect(() => {
-    setComposerDraftState({ sessionId, value: readComposerDraft(sessionId) })
-  }, [sessionId])
-
-  React.useEffect(() => {
-    writeComposerDraft(composerDraftState.sessionId, composerDraftState.value)
-  }, [composerDraftState])
-
-  const setComposerDraft = React.useCallback((value: string) => {
-    setComposerDraftState({ sessionId, value })
-  }, [sessionId])
-
-  React.useEffect(() => {
-    if (!composerInsertion || composerInsertion.sessionId !== sessionId) return
-    setComposerDraftState((current) => {
-      const currentValue = current.sessionId === sessionId ? current.value : readComposerDraft(sessionId)
-      const separator = currentValue.trim().length > 0 && !/\s$/.test(currentValue) ? " " : ""
-      return {
-        sessionId,
-        value: `${currentValue}${separator}${composerInsertion.text}`,
-      }
-    })
-    consumeComposerInsertion(composerInsertion.id)
-  }, [composerInsertion, consumeComposerInsertion, sessionId])
 
   React.useEffect(() => {
     if (!state) {
@@ -1638,6 +1581,22 @@ export function SessionDetail({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-none">
+      {session.cwd || session.gitBranch ? (
+        <div className="flex shrink-0 items-center gap-3 border-b border-border/60 bg-muted/20 px-4 py-1.5 text-xs text-muted-foreground">
+          {session.cwd ? (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <FolderOpen className="size-3.5 shrink-0" />
+              <span className="truncate font-mono">{session.cwd}</span>
+            </span>
+          ) : null}
+          {session.gitBranch ? (
+            <span className="flex shrink-0 items-center gap-1.5">
+              <GitBranch className="size-3.5 shrink-0" />
+              <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">{session.gitBranch}</span>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {error ? (
         <Alert variant="destructive" className="mx-auto mt-4 w-[calc(100%-2rem)] max-w-3xl">
           <CircleAlert />
@@ -1768,6 +1727,7 @@ export function SessionDetail({
             <SessionReviewTag files={turnReviewDisplay.activeReview.files} onReview={() => onOpenReview()} />
           ) : null}
           <SessionComposer
+            key={sessionId}
             token={token}
             session={session}
             runtimeState={runtimeState}
@@ -1776,7 +1736,8 @@ export function SessionDetail({
             sending={sending}
             interrupting={interrupting}
             takeoverBusy={takeoverBusy}
-            value={composerDraft}
+            composerInsertion={composerInsertion}
+            consumeComposerInsertion={consumeComposerInsertion}
             effectiveCapabilities={state?.effectiveCapabilities ?? null}
             modelCatalog={state?.catalogs.model ?? null}
             permissionCatalog={state?.catalogs.permission ?? null}
@@ -1784,7 +1745,6 @@ export function SessionDetail({
             commandsLoading={commandsLoading}
             commandsError={commandsError}
             onCommandQueryChange={handleCommandQueryChange}
-            onValueChange={setComposerDraft}
             onSelectionChange={handleSelectionChange}
             onSend={handleSend}
             onInterrupt={handleInterrupt}
