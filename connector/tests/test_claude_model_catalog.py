@@ -351,6 +351,14 @@ def test_model_catalog_revision_advances_only_when_model_sources_change() -> Non
             # publish has to outrank the one the platform already accepted.
             discovery.server_info = {"models": [*_CLI_MODELS, {"value": "claude-switched"}]}
             clock[0] = 601.0
+            # An expired cache serves the last good list and refreshes behind
+            # the caller, so the rewritten list lands on the read after the
+            # refresh settles rather than on the first read after expiry.
+            assert (await runtime.list_model_catalog()).revision == published.revision
+            for _ in range(50):
+                await asyncio.sleep(0)
+                if runtime._catalogs.discovery._inflight is None:
+                    break
             switched = await runtime.list_model_catalog()
             assert switched.revision == published.revision + 1
         finally:

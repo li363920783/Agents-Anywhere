@@ -60,7 +60,10 @@ class ClaudeCatalogReader:
         query: str | None = None,
         limit: int = 100,
     ) -> RuntimeModelCatalog:
-        cli_models = await self.discovery.models() or ()
+        # `stale_ok`: the catalog is published on a timer and read by clients
+        # opening a session, so neither may wait on a ~4-5s SDK handshake. The
+        # next publish picks up the refreshed list.
+        cli_models = await self.discovery.models(stale_ok=True) or ()
         custom_models = self.custom_models
         catalog = claude_model_catalog(
             revision=0,
