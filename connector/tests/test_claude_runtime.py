@@ -5508,3 +5508,37 @@ def test_session_title_drops_resume_preamble_and_pasted_payload() -> None:
         first_prompt="Fix the login redirect",
     )
     assert _session_title(session) == "Fix the login redirect"
+
+
+def test_task_notification_with_trailing_reminder_is_synthetic() -> None:
+    """Claude Code appends a <system-reminder> block after the notification.
+
+    Requiring the text to *end* with </task-notification> missed exactly that
+    shape, so the raw XML was projected as a normal user turn and every client
+    rendered the tags verbatim.
+    """
+    from connector.runtimes.claude.timeline.messages import is_synthetic_control_message
+
+    message = SimpleNamespace(
+        type="user",
+        content=[
+            {
+                "type": "text",
+                "text": (
+                    "<task-notification><status>stopped</status></task-notification>\n"
+                    "<system-reminder>background task finished</system-reminder>"
+                ),
+            }
+        ],
+    )
+    assert is_synthetic_control_message(message)
+
+
+def test_ordinary_user_text_mentioning_the_tag_is_not_synthetic() -> None:
+    from connector.runtimes.claude.timeline.messages import is_synthetic_control_message
+
+    message = SimpleNamespace(
+        type="user",
+        content=[{"type": "text", "text": "why did <task-notification> show up raw?"}],
+    )
+    assert not is_synthetic_control_message(message)
