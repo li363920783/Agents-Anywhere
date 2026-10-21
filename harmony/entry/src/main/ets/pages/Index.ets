@@ -9,8 +9,6 @@ import { Workspace } from './Workspace';
 import { SessionDetailParam } from '../core/model/Nav';
 import { WorkspaceParam } from '../core/model/Workspace';
 import { Theme } from '../core/ui/Theme';
-import { uiMaterial } from '@kit.ArkUI';
-import { hilog } from '@kit.PerformanceAnalysisKit';
 
 /** EntryAbility publishes a notification-tap target here. */
 const OPEN_SESSION_KEY = 'aa_open_session';
@@ -112,71 +110,48 @@ struct Index {
 struct MainTabs {
   @Consume('rootStack') rootStack: NavPathStack;
   @State activeTab: number = 0;
-  /**
-   * THIN is the documented choice for navigation bars. `getGlobalMaterialLevel()`
-   * returns 0 = `EXQUISITE`, i.e. this device is the top tier, so `style` does
-   * apply.
-   */
-  private barMaterial: uiMaterial.ImmersiveMaterial = new uiMaterial.ImmersiveMaterial({
-    style: uiMaterial.ImmersiveStyle.REGULAR,
-    interactive: true,
-    lightEffect: { color: Color.White }
-  });
-
-  aboutToAppear(): void {
-    hilog.warn(0x0000, 'AA-UI', 'material supported=%{public}s level=%{public}d',
-      `${uiMaterial.isImmersiveMaterialSupported()}`, uiMaterial.getGlobalMaterialLevel());
-  }
 
   build() {
-    // Floating immersive bar needs all three: barPosition End in the
-    // constructor, horizontal layout, and overlap so content runs underneath.
-    // Setting barBackgroundColor or barBackgroundBlurStyle would mask the
-    // material, so neither is set here.
-    Tabs({ barPosition: BarPosition.End, index: this.activeTab }) {
-      TabContent() {
+    // No `Tabs`: both of its modes clipped the page ~320px above the bar, so no
+    // content ever painted underneath and the material had nothing to blur.
+    // A Stack renders each page full-height and floats the bar on top.
+    Stack({ alignContent: Alignment.Bottom }) {
+      if (this.activeTab === 0) {
         Sessions()
-      }
-      .tabBar(this.TabItem('Sessions', 0))
-
-      TabContent() {
+      } else if (this.activeTab === 1) {
         Devices()
-      }
-      .tabBar(this.TabItem('Devices', 1))
-
-      TabContent() {
+      } else {
         SettingsPage()
       }
-      .tabBar(this.TabItem('Settings', 2))
-    }
-    .vertical(false)
-    .barOverlap(true)
-    .barFloatingStyle({
-      barBottomMargin: 28,
-      // The floating style paints a gradient mask above the bar by default
-      // (#CCF1F3F5 in light mode). That scrim is what made the list look like
-      // it stopped short of the bar — drop it so rows stay visible underneath.
-      maskColor: Color.Transparent,
-      maskHeight: 0,
-      systemMaterial: this.barMaterial
-    })
-    .onChange((index: number) => {
-      this.activeTab = index;
-    })
-  }
 
-  // The unread count lives in the Sessions header, not here: a `tabBar` builder
-  // re-runs but only renders its own text, so an added badge never appeared.
-  @Builder
-  TabItem(label: string, index: number) {
-    Column() {
-      Text(label)
-        .fontSize(Theme.fontTiny)
-        .fontWeight(this.activeTab === index ? FontWeight.Medium : FontWeight.Normal)
-        .fontColor(this.activeTab === index ? Theme.accent : Theme.faint)
+      Row({ space: 2 }) {
+        this.BarItem('Sessions', 0)
+        this.BarItem('Devices', 1)
+        this.BarItem('Settings', 2)
+      }
+      .padding(Theme.spaceXs)
+      .backgroundBlurStyle(BlurStyle.COMPONENT_THIN)
+      .borderRadius(Theme.radiusPill)
+      .margin({ bottom: Theme.spaceXl })
     }
     .width('100%')
-    .height(52)
-    .justifyContent(FlexAlign.Center)
+    .height('100%')
+    .backgroundColor(Theme.bg)
+    .clip(false)
   }
+
+  @Builder
+  BarItem(label: string, index: number) {
+    Text(label)
+      .fontSize(Theme.fontTiny)
+      .fontWeight(this.activeTab === index ? FontWeight.Medium : FontWeight.Normal)
+      .fontColor(this.activeTab === index ? Theme.accent : Theme.faint)
+      .padding({ left: 18, right: 18, top: 9, bottom: 9 })
+      .borderRadius(Theme.radiusPill)
+      .backgroundColor(this.activeTab === index ? Theme.raised : Color.Transparent)
+      .onClick(() => {
+        this.activeTab = index;
+      })
+  }
+
 }

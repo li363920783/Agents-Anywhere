@@ -293,10 +293,16 @@ export struct Sessions {
                   }, (item: SessionView) => `${item.id}-${item.updatedSeq}-${item.pinned}-${item.archived}`)
                 }
               }, (group: ProjectGroup) => `${group.name}-${this.isCollapsed(group.name) ? 1 : 0}`)
+
+              // Bottom clearance as a real list item rather than List padding:
+              // a bottom inset makes ArkUI stop painting the list ~320px early,
+              // which is exactly what hid rows behind the floating bar.
+              ListItem() {
+                Row().height(Theme.barClearance)
+              }
             }
             .width(Theme.gutter)
             .layoutWeight(1)
-            .padding({ bottom: Theme.barClearance })
           }
         }
         .layoutWeight(1)

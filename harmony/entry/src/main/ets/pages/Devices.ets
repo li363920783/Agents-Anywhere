@@ -131,10 +131,16 @@ export struct Devices {
               .alignItems(HorizontalAlign.Start)
             }
           }, (c: ConnectorView) => c.id)
+
+          // Clearance as an item, not List padding — a bottom inset clips the
+          // list's painting above the floating bar.
+          ListItem() {
+            Row().height(Theme.barClearance)
+          }
         }
         .width(Theme.gutter)
         .layoutWeight(1)
-        .padding({ top: 8, bottom: Theme.barClearance })
+        .padding({ top: 8 })
       }
     }
     .width('100%')
