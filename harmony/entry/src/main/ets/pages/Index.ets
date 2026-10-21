@@ -5,7 +5,9 @@ import { Sessions } from './Sessions';
 import { SessionDetail } from './SessionDetail';
 import { Devices } from './Devices';
 import { SettingsPage } from './SettingsPage';
+import { Workspace } from './Workspace';
 import { SessionDetailParam } from '../core/model/Nav';
+import { WorkspaceParam } from '../core/model/Workspace';
 import { Theme } from '../core/ui/Theme';
 
 /** EntryAbility publishes a notification-tap target here. */
@@ -47,9 +49,22 @@ struct Index {
   @Builder
   PageMap(name: string, param: Object) {
     if (name === 'SessionDetail') {
+      // The page draws its own header and back control; the system title bar
+      // would otherwise sit above it as an empty strip.
       NavDestination() {
         SessionDetail({ sessionId: (param as SessionDetailParam).id })
       }
+      .hideTitleBar(true)
+      .backgroundColor(Theme.bg)
+    } else if (name === 'Workspace') {
+      NavDestination() {
+        Workspace({
+          connectorId: (param as WorkspaceParam).connectorId,
+          root: (param as WorkspaceParam).root,
+          title: (param as WorkspaceParam).title
+        })
+      }
+      .hideTitleBar(true)
       .backgroundColor(Theme.bg)
     } else if (name === 'Devices') {
       NavDestination() {

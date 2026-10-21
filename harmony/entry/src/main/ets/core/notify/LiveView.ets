@@ -23,6 +23,14 @@ export class LiveView {
   private static showing: boolean = false;
   private static title: string = '';
 
+  /**
+   * Public probe for Settings. Huawei grants 实况窗 per app, so without the
+   * entitlement nothing is ever shown and the user needs to know why.
+   */
+  static async available(): Promise<boolean> {
+    return await LiveView.isEnabled();
+  }
+
   private static async isEnabled(): Promise<boolean> {
     if (LiveView.enabled === null) {
       try {

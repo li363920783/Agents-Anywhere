@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { ApiClient } from '../core/net/ApiClient';
 import { AppState } from '../core/AppState';
 import { Notifier } from '../core/notify/Notifier';
+import { LiveView } from '../core/notify/LiveView';
 import { Prefs } from '../core/store/Prefs';
 import { Theme } from '../core/ui/Theme';
 
@@ -13,10 +14,15 @@ export struct SettingsPage {
   @State notifyDone: boolean = Prefs.getBool(Prefs.keys.notifyDone, true);
   /** OS-level switch; the two toggles below are inert while this is off. */
   @State notifyGranted: boolean = true;
+  /** 实况窗 needs a per-app entitlement from Huawei before anything shows. */
+  @State liveViewOn: boolean = false;
 
   aboutToAppear(): void {
     void Notifier.isEnabled().then((ok: boolean) => {
       this.notifyGranted = ok;
+    });
+    void LiveView.available().then((ok: boolean) => {
+      this.liveViewOn = ok;
     });
   }
 
@@ -197,6 +203,29 @@ export struct SettingsPage {
               this.notifyDone = v;
               Prefs.putBool(Prefs.keys.notifyDone, v);
             })
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
+        Divider().color(Theme.border)
+
+        Row() {
+          Column({ space: 3 }) {
+            Text('实况窗')
+              .fontSize(Theme.fontSmall)
+              .fontColor(Theme.text)
+            Text(this.liveViewOn
+              ? '已开通：回合运行时显示在锁屏和状态栏'
+              : '未开通：需在华为 AGC 为该应用申请实况窗权益')
+              .fontSize(Theme.fontTiny)
+              .fontColor(this.liveViewOn ? Theme.faint : Theme.warn)
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+
+          Text(this.liveViewOn ? '可用' : '未开通')
+            .fontSize(Theme.fontTiny)
+            .fontColor(this.liveViewOn ? Theme.accent : Theme.warn)
         }
         .width('100%')
         .alignItems(VerticalAlign.Center)

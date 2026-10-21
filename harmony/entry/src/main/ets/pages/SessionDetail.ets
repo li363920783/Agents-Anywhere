@@ -10,6 +10,7 @@ import { Fmt } from '../core/util/Fmt';
 import { Snapshot, TimelineItem, SessionView, Notice, NoticeAction, ToolContent, FileChangeContent, MarkerContent } from '../core/model/Session';
 import { EmptyBody, AttachmentRef, FileReadRequest, MessageSendRequest, NoticeRespondRequest, SelectionPatchRequest } from '../core/model/Bodies';
 import { ModelCatalog, ModelItem, PermissionCatalog, PermissionItem, TextFile } from '../core/model/Catalog';
+import { WorkspaceParam } from '../core/model/Workspace';
 import { picker, fileIo } from '@kit.CoreFileKit';
 import cameraPicker from '@ohos.multimedia.cameraPicker';
 import { camera } from '@kit.CameraKit';
@@ -84,9 +85,17 @@ export struct SessionDetail {
     promptAction.showToast({ message: msg, duration: 2000 });
   }
 
+  /** Opens the workspace browser/runner scoped to this session's cwd. */
+  private openWorkspace(): void {
+    const param = new WorkspaceParam();
+    param.connectorId = this.session?.connectorId ?? '';
+    param.root = this.session?.cwd ?? '.';
+    param.title = this.session?.title ?? 'Workspace';
+    this.rootStack.pushPath(new NavPathInfo('Workspace', param));
+  }
+
   /** Current branch, falling back to the worktree name when the runtime reports none. */
-  private branchLabel(): string {
-    const branch = this.session?.gitBranch;
+  private branchLabel(): string {    const branch = this.session?.gitBranch;
     if (branch !== undefined && branch !== null && branch.length > 0) {
       return branch;
     }
@@ -553,6 +562,15 @@ export struct SessionDetail {
     Stack() {
     Column() {
       Row({ space: 10 }) {
+        Text('‹')
+          .fontSize(24)
+          .fontColor(Theme.text)
+          .width(34)
+          .height(34)
+          .textAlign(TextAlign.Center)
+          .backgroundColor(Theme.raised)
+          .borderRadius(Theme.radiusPill)
+          .onClick(() => this.rootStack.pop())
         Circle({ width: 8, height: 8 })
           .fill(this.session?.connectorStatus === 'online' ? Theme.accent : Theme.faint)
           .margin({ top: 6 })
@@ -578,9 +596,22 @@ export struct SessionDetail {
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
+      }
+      .width(Theme.gutter)
+      .padding({ top: 10, bottom: 6 })
+
+      Row({ space: 8 }) {
         Text(Fmt.statusLabel(this.session?.status ?? ''))
           .fontSize(Theme.fontTiny)
           .fontColor(Fmt.statusColor(this.session?.status ?? ''))
+        Blank().layoutWeight(1)
+        Text('工作区')
+          .fontSize(Theme.fontTiny)
+          .fontColor(Theme.muted)
+          .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+          .border({ width: 1, color: Theme.border })
+          .borderRadius(Theme.radiusPill)
+          .onClick(() => this.openWorkspace())
         Button('Interrupt')
           .fontSize(Theme.fontTiny)
           .height(28)
@@ -590,7 +621,7 @@ export struct SessionDetail {
           .onClick(() => this.interrupt())
       }
       .width(Theme.gutter)
-      .padding({ top: 10, bottom: 8 })
+      .padding({ bottom: 8 })
 
       if (this.errorMsg.length > 0) {
         Text(this.errorMsg)
