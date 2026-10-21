@@ -132,7 +132,7 @@ def app_icon(size=512):
     base = gradient(size, LIGHT, DEEP).convert("RGBA")
     glow = radial_glow(size, (0.22, 0.16), 0.72, 0.34)
     base = Image.composite(Image.new("RGBA", (size, size), WHITE), base, glow)
-    base.alpha_composite(mark(size, WHITE, box=0.60))
+    base.alpha_composite(mark(size, WHITE, box=0.68))
     return base.convert("RGB")
 
 
