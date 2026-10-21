@@ -16,6 +16,7 @@ interface PrefsKeys {
   colorMode: string;
   liveViewId: string;
   liveViewLive: string;
+  demoMode: string;
 }
 
 /** App preferences: server URL, recent servers, appearance. */
@@ -37,7 +38,8 @@ export class Prefs {
     notifyAsked: 'notify_asked',
     colorMode: 'color_mode',
     liveViewId: 'live_view_id',
-    liveViewLive: 'live_view_live'
+    liveViewLive: 'live_view_live',
+    demoMode: 'demo_mode'
   };
 
   static init(context: common.UIAbilityContext): void {

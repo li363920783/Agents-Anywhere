@@ -17,6 +17,7 @@ import { camera } from '@kit.CameraKit';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import { MarkdownView } from '../ui/MarkdownView';
 import { Theme } from '../core/ui/Theme';
+import { Demo } from '../core/Demo';
 import { StatusChip, StatusDot } from '../core/ui/Status';
 
 /** Body of an optimistic user bubble, shaped like the server's message payload. */
@@ -112,8 +113,9 @@ export struct SessionDetail {
     this.loading = true;
     this.errorMsg = '';
     try {
-      const res = await ApiClient.shared.get(`/sessions/${this.sessionId}/snapshot?limit=200`);
-      const snap = Snapshot.fromJson(res);
+      const snap = Demo.on()
+        ? Snapshot.fromJson(Demo.snapshot())
+        : Snapshot.fromJson(await ApiClient.shared.get(`/sessions/${this.sessionId}/snapshot?limit=200`));
       this.session = snap.session;
       this.items = snap.timeline;
       this.notices = snap.notices;
@@ -125,7 +127,9 @@ export struct SessionDetail {
     } finally {
       this.loading = false;
     }
-    this.connectStream();
+    if (!Demo.on()) {
+      this.connectStream();
+    }
     void this.markRead();
     void this.loadCatalogs();
     this.scrollToBottom(120);

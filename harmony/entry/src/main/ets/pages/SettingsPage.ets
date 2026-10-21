@@ -7,6 +7,7 @@ import { LiveView } from '../core/notify/LiveView';
 import { Appearance } from '../core/ui/Appearance';
 import { Prefs } from '../core/store/Prefs';
 import { Theme } from '../core/ui/Theme';
+import { Demo } from '../core/Demo';
 
 @Component
 export struct SettingsPage {
@@ -77,7 +78,7 @@ export struct SettingsPage {
             .fontSize(Theme.fontSmall)
             .fontColor(Theme.faint)
             .layoutWeight(1)
-          Text(AppState.shared.serverUrl)
+          Text(Demo.on() ? Demo.serverUrl : AppState.shared.serverUrl)
             .fontSize(Theme.fontSmall)
             .fontColor(Theme.text)
             .maxLines(2)
@@ -94,7 +95,7 @@ export struct SettingsPage {
             .fontSize(Theme.fontSmall)
             .fontColor(Theme.faint)
             .layoutWeight(1)
-          Text(AppState.shared.user?.displayName ?? '-')
+          Text(Demo.on() ? Demo.displayName : (AppState.shared.user?.displayName ?? '-'))
             .fontSize(Theme.fontSmall)
             .fontColor(Theme.text)
             .maxLines(2)
@@ -111,7 +112,7 @@ export struct SettingsPage {
             .fontSize(Theme.fontSmall)
             .fontColor(Theme.faint)
             .layoutWeight(1)
-          Text(AppState.shared.user?.email ?? '-')
+          Text(Demo.on() ? Demo.email : (AppState.shared.user?.email ?? '-'))
             .fontSize(Theme.fontSmall)
             .fontColor(Theme.text)
             .maxLines(2)
@@ -120,6 +121,38 @@ export struct SettingsPage {
             .layoutWeight(2)
         }
         .alignItems(VerticalAlign.Top)
+        Divider().color(Theme.border)
+
+        Row() {
+          Column({ space: 3 }) {
+            Text('演示模式')
+              .fontSize(Theme.fontSmall)
+              .fontColor(Theme.text)
+            Text(Demo.on()
+              ? '当前显示的是示例数据，不是你的会话'
+              : '用示例数据看看界面，不影响已登录的账号')
+              .fontSize(Theme.fontTiny)
+              .fontColor(Theme.faint)
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+
+          Text(Demo.on() ? '退出' : '进入')
+            .fontSize(Theme.fontTiny)
+            .fontColor(Theme.accent)
+            .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+            .border({ width: 1, color: Theme.accent })
+            .borderRadius(Theme.radiusPill)
+            .onClick(() => {
+              if (Demo.on()) {
+                AppState.shared.exitDemo();
+              } else {
+                AppState.shared.enterDemo();
+              }
+            })
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
       }
       .width(Theme.gutter)
       .padding(16)
@@ -266,7 +299,7 @@ export struct SettingsPage {
       .shadow({ radius: 12, color: Theme.shadow, offsetX: 0, offsetY: 3 })
       .alignItems(HorizontalAlign.Start)
 
-      Button('Sign out')
+      Button(Demo.on() ? '退出演示模式' : 'Sign out')
         .width(Theme.gutter)
         .height(46)
         .fontSize(Theme.fontBody)
@@ -275,7 +308,14 @@ export struct SettingsPage {
         .fontColor(Theme.danger)
         .border({ width: 1, color: Theme.danger })
         .borderRadius(10)
-        .onClick(() => this.confirmSignOut())
+        .onClick(() => {
+          if (Demo.on()) {
+            AppState.shared.exitDemo();
+            promptAction.showToast({ message: '已退出演示模式', duration: 1500 });
+          } else {
+            this.confirmSignOut();
+          }
+        })
 
       Text('Agents Anywhere for HarmonyOS NEXT · ArkTS')
         .fontSize(Theme.fontTiny)

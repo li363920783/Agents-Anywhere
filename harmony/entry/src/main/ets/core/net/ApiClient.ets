@@ -1,6 +1,7 @@
 import http from '@ohos.net.http';
 import { Json } from '../util/Json';
 import { ApiError } from './ApiError';
+import { Demo } from '../Demo';
 import { EmptyBody, WsTicketRequest } from '../model/Bodies';
 
 /**
@@ -72,6 +73,11 @@ export class ApiClient {
   }
 
   private raw(method: http.RequestMethod, path: string, body: Object | null, auth: boolean): Promise<Object> {
+    if (Demo.on() && method !== http.RequestMethod.GET) {
+      // The sample account has no server behind it. Fail here, immediately,
+      // rather than after a timeout — the callers already surface the message.
+      return Promise.reject(new ApiError(0, '演示模式不支持该操作', ''));
+    }
     const url = `${this.baseUrl}${ApiClient.namespaced(path)}`;
     const header: Record<string, string> = { 'Content-Type': 'application/json' };
     if (auth && this.token.length > 0) {

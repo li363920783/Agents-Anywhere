@@ -307,6 +307,20 @@ export struct Login {
           .onClick(() => {
             this.qrOpen = !this.qrOpen;
           })
+        // Reviewers, and anyone evaluating the app, need a way in without an
+        // account. Everything behind it is sample data and is labelled as such.
+        Button('演示模式 · 免账号体验')
+          .height(40)
+          .width('100%')
+          .fontSize(Theme.fontTiny)
+          .backgroundColor(Theme.raised)
+          .fontColor(Theme.accent)
+          .border({ width: 1, color: Theme.accentTint })
+          .borderRadius(10)
+          .margin({ top: 10 })
+          .onClick(() => {
+            AppState.shared.enterDemo();
+          })
         if (this.qrOpen) {
           TextArea({ placeholder: '{"serverUrl":…,"userId":"…","loginToken":"…"}', text: this.qrText })
             .height(110)

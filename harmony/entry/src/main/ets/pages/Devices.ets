@@ -2,6 +2,7 @@ import { ApiClient } from '../core/net/ApiClient';
 import { ApiError } from '../core/net/ApiError';
 import { Fmt } from '../core/util/Fmt';
 import { ConnectorListResponse, ConnectorView } from '../core/model/Connector';
+import { Demo } from '../core/Demo';
 import { Theme } from '../core/ui/Theme';
 
 @Component
@@ -19,8 +20,9 @@ export struct Devices {
     this.loading = true;
     this.errorMsg = '';
     try {
-      const res = await ApiClient.shared.get('/connectors');
-      this.items = ConnectorListResponse.fromJson(res).connectors;
+      this.items = Demo.on()
+        ? Demo.connectors()
+        : ConnectorListResponse.fromJson(await ApiClient.shared.get('/connectors')).connectors;
     } catch (e) {
       const err = e as Error;
       const msg = err instanceof ApiError ? err.message : 'load failed';

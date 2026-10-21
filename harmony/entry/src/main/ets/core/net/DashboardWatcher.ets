@@ -9,6 +9,7 @@ import { ApiClient } from './ApiClient';
 import { Notifier } from '../notify/Notifier';
 import { KeepAlive } from '../notify/KeepAlive';
 import { LiveView } from '../notify/LiveView';
+import { Demo } from '../Demo';
 
 const TAG = 'AA-Watch';
 /**
@@ -92,6 +93,12 @@ export class DashboardWatcher {
       return;
     }
     this.wantRun = true;
+    if (Demo.on()) {
+      // No socket in the sample account; the list is the sample inventory.
+      AppStorage.setOrCreate(SESSIONS_KEY, Demo.sessions());
+      AppStorage.setOrCreate(UNREAD_KEY, 1);
+      return;
+    }
     // The watcher only runs for a signed-in user, which is exactly when asking
     // for notification permission makes sense.
     Notifier.askOnce();

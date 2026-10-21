@@ -10,6 +10,7 @@ import { Json } from '../core/util/Json';
 import { ConnectorListResponse, ConnectorView } from '../core/model/Connector';
 import { Theme } from '../core/ui/Theme';
 import { StatusChip, StatusDot } from '../core/ui/Status';
+import { Demo } from '../core/Demo';
 
 /** One project section in the session list. */
 class ProjectGroup {
@@ -154,8 +155,9 @@ export struct Sessions {
   /** Device chips are best-effort: a failure just leaves "All devices" alone. */
   private async loadConnectors(): Promise<void> {
     try {
-      const res = await ApiClient.shared.get('/connectors');
-      this.connectors = ConnectorListResponse.fromJson(res).connectors;
+      this.connectors = Demo.on()
+        ? Demo.connectors()
+        : ConnectorListResponse.fromJson(await ApiClient.shared.get('/connectors')).connectors;
     } catch (e) {
       this.connectors = [];
     }
@@ -356,6 +358,15 @@ export struct Sessions {
             .onClick(() => this.openFirstUnread())
         }
         Blank().layoutWeight(1)
+        if (Demo.on()) {
+          Text('演示模式')
+            .fontSize(Theme.fontTiny)
+            .fontColor(Theme.waiting)
+            .backgroundColor(Theme.tint(Theme.waiting))
+            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+            .borderRadius(Theme.radiusPill)
+            .maxLines(1)
+        }
         Button(this.archived ? 'Archived' : 'Active')
           .fontSize(Theme.fontTiny)
           .height(30)
