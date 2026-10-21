@@ -13,6 +13,7 @@ interface PrefsKeys {
   notifyApproval: string;
   notifyDone: string;
   notifyAsked: string;
+  colorMode: string;
 }
 
 /** App preferences: server URL, recent servers, appearance. */
@@ -31,7 +32,8 @@ export class Prefs {
     appearance: 'appearance',
     notifyApproval: 'notify_approval',
     notifyDone: 'notify_done',
-    notifyAsked: 'notify_asked'
+    notifyAsked: 'notify_asked',
+    colorMode: 'color_mode'
   };
 
   static init(context: common.UIAbilityContext): void {

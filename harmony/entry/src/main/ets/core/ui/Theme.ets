@@ -11,8 +11,10 @@
  */
 export class Theme {
   // Surfaces
-  static readonly bg: Resource = $r('sys.color.ohos_id_color_background');
-  static readonly surface: Resource = $r('sys.color.ohos_id_color_sub_background');
+  /** Page sits on the *sub* background and cards on `card_bg`; both being white
+   *  made the light theme read as one continuous sheet. */
+  static readonly bg: Resource = $r('sys.color.ohos_id_color_sub_background');
+  static readonly surface: Resource = $r('sys.color.ohos_id_color_card_bg');
   static readonly raised: Resource = $r('sys.color.ohos_id_color_text_field_bg');
   static readonly border: Resource = $r('sys.color.ohos_id_color_list_separator');
   static readonly borderStrong: Resource = $r('sys.color.ohos_id_color_tertiary');

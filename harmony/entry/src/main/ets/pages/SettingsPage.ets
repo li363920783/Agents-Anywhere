@@ -4,6 +4,7 @@ import { ApiClient } from '../core/net/ApiClient';
 import { AppState } from '../core/AppState';
 import { Notifier } from '../core/notify/Notifier';
 import { LiveView } from '../core/notify/LiveView';
+import { Appearance } from '../core/ui/Appearance';
 import { Prefs } from '../core/store/Prefs';
 import { Theme } from '../core/ui/Theme';
 
@@ -16,6 +17,7 @@ export struct SettingsPage {
   @State notifyGranted: boolean = true;
   /** 实况窗 needs a per-app entitlement from Huawei before anything shows. */
   @State liveViewOn: boolean = false;
+  @State appearance: string = Appearance.current();
 
   aboutToAppear(): void {
     void Notifier.isEnabled().then((ok: boolean) => {
@@ -124,6 +126,30 @@ export struct SettingsPage {
       .backgroundColor(Theme.surface)
       .borderRadius(Theme.radiusCard)
       .alignItems(HorizontalAlign.Start)
+
+      Text('Appearance')
+        .fontSize(Theme.fontTiny)
+        .fontColor(Theme.faint)
+        .width(Theme.gutter)
+        .padding({ top: Theme.spaceXl, bottom: Theme.spaceSm })
+
+      Row({ space: Theme.spaceSm }) {
+        ForEach(Appearance.options, (mode: string, index: number) => {
+          Text(Appearance.labels[index])
+            .fontSize(Theme.fontSmall)
+            .fontColor(this.appearance === mode ? Theme.onAccent : Theme.text)
+            .backgroundColor(this.appearance === mode ? Theme.accent : Theme.surface)
+            .padding({ left: 14, right: 14, top: 9, bottom: 9 })
+            .borderRadius(Theme.radiusPill)
+            .layoutWeight(1)
+            .textAlign(TextAlign.Center)
+            .onClick(() => {
+              this.appearance = mode;
+              Appearance.apply(mode);
+            })
+        }, (mode: string) => mode)
+      }
+      .width(Theme.gutter)
 
       Text('Notifications')
         .fontSize(Theme.fontTiny)
@@ -254,6 +280,7 @@ export struct SettingsPage {
     }
     .width('100%')
     .height('100%')
+    .padding({ bottom: Theme.barClearance })
     .backgroundColor(Theme.bg)
   }
 }

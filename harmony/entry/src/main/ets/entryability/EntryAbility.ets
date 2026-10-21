@@ -6,6 +6,7 @@ import { Prefs } from '../core/store/Prefs';
 import { KeepAlive } from '../core/notify/KeepAlive';
 import { DashboardWatcher } from '../core/net/DashboardWatcher';
 import { Notifier, WANT_SESSION_KEY } from '../core/notify/Notifier';
+import { Appearance } from '../core/ui/Appearance';
 
 /** AppStorage key the Index page watches to open a session from a notification tap. */
 export const OPEN_SESSION_KEY = 'aa_open_session';
@@ -15,6 +16,8 @@ export default class EntryAbility extends UIAbility {
     Prefs.init(this.context);
     KeepAlive.attach(this.context);
     Notifier.attach(this.context);
+    Appearance.attach(this.context);
+    Appearance.restore();
     this.routeFromWant(want);
     hilog.info(0x0000, 'AgentsAnywhere', 'ability onCreate');
     void AppState.shared.restore().then(() => {

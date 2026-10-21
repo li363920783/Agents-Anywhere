@@ -9,7 +9,6 @@ import { Workspace } from './Workspace';
 import { SessionDetailParam } from '../core/model/Nav';
 import { WorkspaceParam } from '../core/model/Workspace';
 import { Theme } from '../core/ui/Theme';
-import { HdsTabs, hdsMaterial } from '@kit.UIDesignKit';
 
 /** EntryAbility publishes a notification-tap target here. */
 const OPEN_SESSION_KEY = 'aa_open_session';
@@ -113,39 +112,59 @@ struct MainTabs {
   @State activeTab: number = 0;
 
   build() {
-    // HDS tab bar with a floating system material. This only works now that the
-    // palette follows the system theme — the material is themed by the system,
-    // so against a forced-dark UI it rendered light under white labels.
-    HdsTabs({ index: this.activeTab }) {
-      TabContent() {
-        Sessions()
-      }
-      .tabBar(this.TabItem('Sessions', 0))
+    Stack({ alignContent: Alignment.Bottom }) {
+      Tabs({ index: this.activeTab }) {
+        TabContent() {
+          Sessions()
+        }
+        .tabBar(this.TabItem('Sessions', 0))
 
-      TabContent() {
-        Devices()
-      }
-      .tabBar(this.TabItem('Devices', 1))
+        TabContent() {
+          Devices()
+        }
+        .tabBar(this.TabItem('Devices', 1))
 
-      TabContent() {
-        SettingsPage()
+        TabContent() {
+          SettingsPage()
+        }
+        .tabBar(this.TabItem('Settings', 2))
       }
-      .tabBar(this.TabItem('Settings', 2))
+      // The built-in bar reserves its own strip, so content can never run under
+      // it and the material has nothing to blur. Hide it and draw the bar here.
+      .barHeight(0)
+      .backgroundColor(Theme.bg)
+      .onChange((index: number) => {
+        this.activeTab = index;
+      })
+
+      Row({ space: 2 }) {
+        this.BarItem('Sessions', 0)
+        this.BarItem('Devices', 1)
+        this.BarItem('Settings', 2)
+      }
+      .padding(Theme.spaceXs)
+      // Real frosted glass: whatever the list scrolls behind gets blurred.
+      .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+      .borderRadius(Theme.radiusPill)
+      .margin({ bottom: Theme.spaceXl })
     }
-    .barPosition(BarPosition.End)
-    .barMode(BarMode.Fixed)
-    // Content scrolls beneath the bar; each screen reserves matching clearance.
-    .barOverlap(true)
-    .barFloatingStyle({
-      barBottomMargin: 12,
-      systemMaterialEffect: {
-        materialType: hdsMaterial.MaterialType.ADAPTIVE,
-        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-      }
-    })
-    .onChange((index: number) => {
-      this.activeTab = index;
-    })
+    .width('100%')
+    .height('100%')
+    .backgroundColor(Theme.bg)
+  }
+
+  @Builder
+  BarItem(label: string, index: number) {
+    Text(label)
+      .fontSize(Theme.fontTiny)
+      .fontWeight(this.activeTab === index ? FontWeight.Medium : FontWeight.Normal)
+      .fontColor(this.activeTab === index ? Theme.accent : Theme.faint)
+      .padding({ left: 18, right: 18, top: 9, bottom: 9 })
+      .borderRadius(Theme.radiusPill)
+      .backgroundColor(this.activeTab === index ? Theme.raised : Color.Transparent)
+      .onClick(() => {
+        this.activeTab = index;
+      })
   }
 
   // The unread count lives in the Sessions header, not here: a `tabBar` builder
