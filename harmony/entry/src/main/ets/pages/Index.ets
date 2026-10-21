@@ -9,6 +9,7 @@ import { Workspace } from './Workspace';
 import { SessionDetailParam } from '../core/model/Nav';
 import { WorkspaceParam } from '../core/model/Workspace';
 import { Theme } from '../core/ui/Theme';
+import { HdsTabs, hdsMaterial } from '@kit.UIDesignKit';
 
 /** EntryAbility publishes a notification-tap target here. */
 const OPEN_SESSION_KEY = 'aa_open_session';
@@ -112,7 +113,9 @@ struct MainTabs {
   @State activeTab: number = 0;
 
   build() {
-    Tabs({ index: this.activeTab }) {
+    // HDS tab bar: floats over the content with a system material instead of a
+    // flat strip, which is most of the visual gap on this shell.
+    HdsTabs({ index: this.activeTab }) {
       TabContent() {
         Sessions()
       }
@@ -130,6 +133,13 @@ struct MainTabs {
     }
     .barPosition(BarPosition.End)
     .barMode(BarMode.Fixed)
+    .barFloatingStyle({
+      barBottomMargin: 16,
+      systemMaterialEffect: {
+        materialType: hdsMaterial.MaterialType.ADAPTIVE,
+        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+      }
+    })
     .backgroundColor(Theme.bg)
     .onChange((index: number) => {
       this.activeTab = index;
