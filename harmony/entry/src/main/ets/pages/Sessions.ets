@@ -297,6 +297,7 @@ export struct Sessions {
             }
             .width(Theme.gutter)
             .layoutWeight(1)
+            .padding({ bottom: Theme.spaceLg })
           }
           .onRefreshing(() => {
             // Data arrives by push, so a pull means "resync the socket".
@@ -348,12 +349,11 @@ export struct Sessions {
   @Builder
   GroupHeader(name: string, count: number, collapsed: boolean) {
     Row({ space: 8 }) {
-      Row()
-        .width(7)
-        .height(7)
-        .border({ width: { bottom: 1.5, right: 1.5 }, color: Theme.muted })
-        .rotate({ angle: collapsed ? -45 : 45 })
-        .margin({ left: 2, right: 2 })
+      SymbolGlyph($r('sys.symbol.chevron_right'))
+        .fontSize(13)
+        .fontColor([Theme.muted])
+        .rotate({ angle: collapsed ? 0 : 90 })
+        .width(14)
       Text(name)
         .fontSize(Theme.fontTiny)
         .fontColor(Theme.muted)
@@ -366,7 +366,7 @@ export struct Sessions {
         .fontColor(Theme.faint)
     }
     .width('100%')
-    .padding({ top: 16, bottom: 8 })
+    .padding({ top: Theme.spaceLg, bottom: Theme.spaceSm })
     .backgroundColor(Theme.bg)
     .onClick(() => this.toggleGroup(name))
   }
@@ -435,10 +435,17 @@ export struct Sessions {
       .width('100%')
     }
     .width('100%')
-    .padding({ left: 14, right: 14, top: 12, bottom: 12 })
+    .padding({
+      left: Theme.spaceLg,
+      right: Theme.spaceLg,
+      top: Theme.spaceMd,
+      bottom: Theme.spaceMd
+    })
     .backgroundColor(Theme.surface)
-    .border({ width: 1, color: Theme.border })
+    // Elevation instead of a hairline border: borders on every card made the
+    // list read as a table.
     .borderRadius(Theme.radiusCard)
+    .shadow({ radius: 12, color: Theme.shadow, offsetX: 0, offsetY: 3 })
     .alignItems(HorizontalAlign.Start)
     .onClick(() => {
       const param = new SessionDetailParam();

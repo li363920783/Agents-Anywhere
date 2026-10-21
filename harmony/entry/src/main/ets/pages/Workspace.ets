@@ -152,15 +152,17 @@ export struct Workspace {
   build() {
     Column() {
       Row({ space: 10 }) {
-        Text('‹')
-          .fontSize(24)
-          .fontColor(Theme.text)
-          .width(34)
-          .height(34)
-          .textAlign(TextAlign.Center)
-          .backgroundColor(Theme.raised)
-          .borderRadius(Theme.radiusPill)
-          .onClick(() => this.rootStack.pop())
+        Column() {
+          SymbolGlyph($r('sys.symbol.arrow_left'))
+            .fontSize(18)
+            .fontColor([Theme.text])
+        }
+        .width(34)
+        .height(34)
+        .justifyContent(FlexAlign.Center)
+        .backgroundColor(Theme.raised)
+        .borderRadius(Theme.radiusPill)
+        .onClick(() => this.rootStack.pop())
         Column({ space: 2 }) {
           Text(this.title.length > 0 ? this.title : 'Workspace')
             .fontSize(Theme.fontHeading)
@@ -241,15 +243,17 @@ export struct Workspace {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .layoutWeight(1)
-        Text('↻')
-          .fontSize(Theme.fontBody)
-          .fontColor(Theme.muted)
-          .width(40)
-          .height(32)
-          .textAlign(TextAlign.Center)
-          .backgroundColor(Theme.raised)
-          .borderRadius(8)
-          .onClick(() => this.loadDir(this.path))
+        Column() {
+          SymbolGlyph($r('sys.symbol.arrow_clockwise'))
+            .fontSize(16)
+            .fontColor([Theme.muted])
+        }
+        .width(40)
+        .height(32)
+        .justifyContent(FlexAlign.Center)
+        .backgroundColor(Theme.raised)
+        .borderRadius(8)
+        .onClick(() => this.loadDir(this.path))
       }
       .width(Theme.gutter)
 

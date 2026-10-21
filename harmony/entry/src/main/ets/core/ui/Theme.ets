@@ -35,9 +35,23 @@ export class Theme {
   static readonly fontSmall: number = 12;
   static readonly fontTiny: number = 11;
 
+  // Spacing scale (4pt grid) — keeps rhythm consistent instead of ad-hoc numbers
+  static readonly spaceXs: number = 4;
+  static readonly spaceSm: number = 8;
+  static readonly spaceMd: number = 12;
+  static readonly spaceLg: number = 16;
+  static readonly spaceXl: number = 24;
+
+  // Depth
+  /** One step above `raised`, for the top-most surface in a stack. */
+  static readonly elevated: string = '#2B343F';
+  /** Semi-transparent bar: content stays faintly visible as it scrolls under. */
+  static readonly barScrim: string = '#E612181E';
+  static readonly shadow: string = '#59000000';
+
   // Shape
   static readonly gutter: string = '92%';
-  static readonly radiusCard: number = 12;
+  static readonly radiusCard: number = 14;
   static readonly radiusBubble: number = 14;
   static readonly radiusPill: number = 999;
 }

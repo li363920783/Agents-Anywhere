@@ -595,15 +595,17 @@ export struct SessionDetail {
     Stack() {
     Column() {
       Row({ space: 10 }) {
-        Text('‹')
-          .fontSize(24)
-          .fontColor(Theme.text)
-          .width(34)
-          .height(34)
-          .textAlign(TextAlign.Center)
-          .backgroundColor(Theme.raised)
-          .borderRadius(Theme.radiusPill)
-          .onClick(() => this.rootStack.pop())
+        Column() {
+          SymbolGlyph($r('sys.symbol.arrow_left'))
+            .fontSize(18)
+            .fontColor([Theme.text])
+        }
+        .width(34)
+        .height(34)
+        .justifyContent(FlexAlign.Center)
+        .backgroundColor(Theme.raised)
+        .borderRadius(Theme.radiusPill)
+        .onClick(() => this.rootStack.pop())
         Circle({ width: 8, height: 8 })
           .fill(this.session?.connectorStatus === 'online' ? Theme.accent : Theme.faint)
           .margin({ top: 6 })
@@ -1008,11 +1010,10 @@ export struct SessionDetail {
           Text(item.status)
             .fontSize(Theme.fontTiny)
             .fontColor(this.statusText(item))
-          Row()
-            .width(7)
-            .height(7)
-            .border({ width: { bottom: 1.5, right: 1.5 }, color: Theme.muted })
-            .rotate({ angle: this.isToolExpanded(item.id) ? 45 : -45 })
+          SymbolGlyph($r('sys.symbol.chevron_right'))
+            .fontSize(12)
+            .fontColor([Theme.muted])
+            .rotate({ angle: this.isToolExpanded(item.id) ? 90 : 0 })
         }
         .width('100%')
 
