@@ -134,7 +134,7 @@ export struct Devices {
         }
         .width(Theme.gutter)
         .layoutWeight(1)
-        .padding({ top: 8 })
+        .padding({ top: 8, bottom: Theme.barClearance })
       }
     }
     .width('100%')

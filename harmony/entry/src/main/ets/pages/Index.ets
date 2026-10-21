@@ -9,6 +9,8 @@ import { Workspace } from './Workspace';
 import { SessionDetailParam } from '../core/model/Nav';
 import { WorkspaceParam } from '../core/model/Workspace';
 import { Theme } from '../core/ui/Theme';
+import { uiMaterial } from '@kit.ArkUI';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 
 /** EntryAbility publishes a notification-tap target here. */
 const OPEN_SESSION_KEY = 'aa_open_session';
@@ -110,9 +112,29 @@ struct Index {
 struct MainTabs {
   @Consume('rootStack') rootStack: NavPathStack;
   @State activeTab: number = 0;
+  /**
+   * THIN is the documented choice for navigation bars. On a low-tier device
+   * (`getGlobalMaterialLevel()` returns 0 — which this phone does) `style` is
+   * ignored entirely and only `materialColor` / `applyShadow` / `interactive`
+   * apply, so the blur cannot be strengthened there.
+   */
+  private barMaterial: uiMaterial.ImmersiveMaterial = new uiMaterial.ImmersiveMaterial({
+    style: uiMaterial.ImmersiveStyle.THIN,
+    interactive: true,
+    lightEffect: { color: Color.White }
+  });
+
+  aboutToAppear(): void {
+    hilog.warn(0x0000, 'AA-UI', 'material supported=%{public}s level=%{public}d',
+      `${uiMaterial.isImmersiveMaterialSupported()}`, uiMaterial.getGlobalMaterialLevel());
+  }
 
   build() {
-    Tabs({ index: this.activeTab }) {
+    // Floating immersive bar needs all three: barPosition End in the
+    // constructor, horizontal layout, and overlap so content runs underneath.
+    // Setting barBackgroundColor or barBackgroundBlurStyle would mask the
+    // material, so neither is set here.
+    Tabs({ barPosition: BarPosition.End, index: this.activeTab }) {
       TabContent() {
         Sessions()
       }
@@ -128,9 +150,12 @@ struct MainTabs {
       }
       .tabBar(this.TabItem('Settings', 2))
     }
-    .barPosition(BarPosition.End)
-    .barMode(BarMode.Fixed)
-    .backgroundColor(Theme.bg)
+    .vertical(false)
+    .barOverlap(true)
+    .barFloatingStyle({
+      barBottomMargin: 28,
+      systemMaterial: this.barMaterial
+    })
     .onChange((index: number) => {
       this.activeTab = index;
     })
