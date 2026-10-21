@@ -233,6 +233,7 @@ HarmonyOS 对后台应用的网络管控很硬：**退到后台约 2 秒后网�
 | 切换深/浅色后重启又变回去 | `preferences.flush()` 是异步的，`setColorMode()` 紧接着重启进程，写盘没落地 | `Prefs` 全部改用 `flushSync()` |
 | 卡片后面一片纯色，毛玻璃看不出效果 | 系统材质模糊的是背后的内容，背后是纯色时模糊≈没模糊 | 先铺环境光层（见 §11） |
 | 实况窗越开越多、不会自己关 | `lifeCycleMode` 默认 `STOP_BY_APP`：卡片**不随进程回收**，而它的 id 只存在于创建它的那个进程里 —— 进程一死就再也停不掉，于是每跑一次多一张 | 设 `AUTO_STOP_WHEN_APP_TERMINATE`；另用 Prefs 持久化 id，启动时 `reap()` 兜底（见 §12） |
+| AGC 报 **7025「当前软件包不支持上架到应用市场」** | 用了**指定设备发布 Profile**（`app-distribution-type: internaltesting`）。它和「发布 Profile」在 AGC 里都叫 release、长得几乎一样 | 换成 `app_gallery` 那个。`build-profile.json5` 被 `.gitignore` 忽略，**本机已改，换机器要重设**。自查见 §13 |
 
 ---
 
@@ -414,3 +415,41 @@ python3 tools/make-icons.py
 实况窗没有任意动画 API。能动的只有系统自己渲染的那部分：进度条随 `progress` 前进、
 指示图标沿节点移动。所以「动画」= 按 `LiveView` 每 30s 推进一次 `progress`
 （`DashboardWatcher` 的 ticker；再快会撞 `1003500008` 频率限制）。
+
+---
+
+## 13. 出上架包
+
+```bash
+hvigorw assembleApp --mode project -p product=default -p buildMode=release
+# → build/outputs/default/harmony-default-signed.app
+```
+
+**Profile 必须选「发布 Profile」。** AGC 里两种 release profile 只差一个字段，
+肉眼几乎分不出：
+
+| AGC 里的类型 | `app-distribution-type` | 能上架吗 |
+| --- | --- | --- |
+| 发布 Profile | `app_gallery` | ✅ |
+| 指定设备发布 Profile | `internaltesting` | ❌ 报 7025 |
+
+选错的报错是「当前软件包不支持上架到应用市场」，看不出是 profile 的问题。
+打包后不用传上去就能自查：
+
+```bash
+JAR=$SDK/default/openharmony/toolchains/lib/hap-sign-tool.jar
+java -jar $JAR verify-app -inFile x.app -outCertChain /tmp/c.cer -outProfile /tmp/p.p7b
+openssl smime -verify -inform DER -in /tmp/p.p7b -noverify | strings \
+  | grep -oE '"app-distribution-type":"[a-z_]+"'
+```
+
+**上架素材**由脚本生成，别手工改 PNG：
+
+```bash
+python3 tools/make-icons.py <图标输出目录>       # 216 / 512 / 1024
+python3 tools/make-store-shots.py <原图目录> <输出目录>
+```
+
+`make-store-shots.py` 把 1320×2848 的真机图补成 AGC 要的 1080×1920（9:16）：
+手机屏比 9:16 更窄长，**直接裁会切掉底部悬浮页签栏**，所以改成缩放到满高、
+两侧用截图自身的边缘像素拉伸补齐（背景是渐变，接缝看不出来）。
