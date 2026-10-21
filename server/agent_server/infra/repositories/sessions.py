@@ -17,6 +17,10 @@ _SESSION_INVENTORY_UPDATE_CHUNK_SIZE = 4_000
 # because runtimes keep re-announcing the title of their own thread file.
 TITLE_SOURCE_CONNECTOR = "connector"
 TITLE_SOURCE_USER = "user"
+# A `--resume`/compaction copy: its first message is the injected transcript
+# preamble, it carries no name of its own, and it duplicates a real session.
+# Sessions marked with this source are never listed.
+TITLE_SOURCE_RESUME = "resume_log"
 
 
 class _LatestTimelineMetadata(BaseModel):
@@ -327,7 +331,7 @@ class SessionRepositoryMixin:
                     model_selection_id=model_selection_id,
                     permission_selection_id=permission_selection_id,
                     external_session_id=external_session_id,
-                    title=_client_session_title(title),
+                    title=_normalized_session_title(title),
                     cwd=cwd,
                     status="idle",
                     takeover=int(takeover),
@@ -362,6 +366,10 @@ class SessionRepositoryMixin:
         source_state: str | None = None,
     ) -> SessionView:
         identity = _runtime_identity(runtime, runtime_id)
+        # Connectors report the runtime's first-prompt-derived title; normalize it
+        # here too so already-stored titles heal on the next sync.
+        resume_log = title is not None and _is_resume_preamble(" ".join(title.split()))
+        title = _normalized_session_title(title)
         canonical_session_id = session_id
         async with self._engine.connect() as conn:
             existing = (
@@ -434,6 +442,11 @@ class SessionRepositoryMixin:
         has_permission_selection_id = permission_selection_id is not None
         now = utc_now()
         normalized_origin = _normalize_session_origin(origin)
+        # 与上方插入分支保持一致：压缩副本(--resume)的首条消息是注入的 transcript
+        # 前言，需要据此标记 title_source，避免它在列表里显示 / 覆盖真实标题。
+        # （缺这段会让下方 resume_log 引用抛 NameError，使连接器通知被批量拒绝。）
+        resume_log = title is not None and _is_resume_preamble(" ".join(title.split()))
+        title = _normalized_session_title(title)
         async with self._engine.begin() as conn:
             connector = (
                 await conn.execute(
@@ -470,7 +483,11 @@ class SessionRepositoryMixin:
                         permission_selection_id=permission_selection_id,
                         external_session_id=external_session_id,
                         title=title,
-                        title_source=TITLE_SOURCE_CONNECTOR if title is not None else None,
+                        title_source=(
+                            TITLE_SOURCE_RESUME
+                            if resume_log
+                            else (TITLE_SOURCE_CONNECTOR if title is not None else None)
+                        ),
                         cwd=normalized_cwd,
                         git_branch=git_branch,
                         status=status or "idle",
@@ -522,13 +539,13 @@ class SessionRepositoryMixin:
                 values: dict[str, Any] = {}
                 if external_session_id is not None:
                     values["external_session_id"] = external_session_id
-                if (
-                    title is not None
-                    and current.title_source != TITLE_SOURCE_USER
-                    and current.title != title
+                if current.title_source != TITLE_SOURCE_USER and (
+                    resume_log or (title is not None and current.title != title)
                 ):
                     values["title"] = title
-                    values["title_source"] = TITLE_SOURCE_CONNECTOR
+                    values["title_source"] = (
+                        TITLE_SOURCE_RESUME if resume_log else TITLE_SOURCE_CONNECTOR
+                    )
                 if cwd is not None or current.project_id is None:
                     project_id, normalized_cwd = await self._ensure_project_for_workspace(
                         conn,
@@ -754,7 +771,13 @@ class SessionRepositoryMixin:
         latest_source = latest_item[0]
         query = (
             _session_view_query(latest_item)
-            .where(connectors_t.c.revoked == 0, connectors_t.c.user_id == user_id)
+            .where(
+                connectors_t.c.revoked == 0,
+                connectors_t.c.user_id == user_id,
+                # Resume/compaction copies duplicate a real session and carry no
+                # name of their own; keep them out of the inventory too.
+                func.coalesce(sessions_t.c.title_source, "") != TITLE_SOURCE_RESUME,
+            )
             .order_by(
                 sessions_t.c.pinned.desc(),
                 _session_sort_at(latest_source).desc(),
@@ -788,6 +811,9 @@ class SessionRepositoryMixin:
             .where(
                 connectors_t.c.revoked == 0,
                 sessions_t.c.archived == int(archived),
+                # Resume/compaction copies are duplicates with no name of their
+                # own; keep them out of every client's list.
+                func.coalesce(sessions_t.c.title_source, "") != TITLE_SOURCE_RESUME,
             )
             .order_by(
                 sessions_t.c.pinned.desc(),
@@ -1840,7 +1866,11 @@ class SessionRepositoryMixin:
         return await self.get_session(session_id)
 
 
-    async def _derive_title_from_first_user_message(self, session_id: str) -> str | None:
+    async def _derive_title_from_first_user_message(self, session_id: str) -> tuple[str | None, bool]:
+        # A resumed/compacted session opens with the injected transcript
+        # preamble, so the first message is not a name — walk past it to the
+        # first prompt a person actually wrote. `saw_preamble` reports whether
+        # that preamble was the only user message, i.e. it is a resume copy.
         query = (
             select(timeline_items_t.c.payload_json)
             .where(
@@ -1849,17 +1879,35 @@ class SessionRepositoryMixin:
                 timeline_items_t.c.role == "user",
             )
             .order_by(timeline_items_t.c.order_seq.asc(), timeline_items_t.c.updated_seq.asc())
-            .limit(1)
+            .limit(8)
         )
         async with self._engine.connect() as conn:
-            row = (await conn.execute(query)).first()
-        if row is None:
-            return None
-        payload = _json_loads(row[0])
-        if not isinstance(payload, dict):
-            return None
-        text = _message_text(payload.get("content"))
-        return _truncate_title(text) if text else None
+            rows = (await conn.execute(query)).all()
+        saw_preamble = False
+        for row in rows:
+            payload = _json_loads(row[0])
+            if not isinstance(payload, dict):
+                continue
+            text = _message_text(payload.get("content"))
+            if text and _is_resume_preamble(" ".join(text.split())):
+                saw_preamble = True
+                continue
+            title = _normalized_session_title(text)
+            if title:
+                return title, False
+        return None, saw_preamble
+
+
+    async def _mark_resume_log(self, session_id: str) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                sessions_t.update()
+                .where(
+                    sessions_t.c.id == session_id,
+                    sessions_t.c.title.is_(None) | (sessions_t.c.title == ""),
+                )
+                .values(title_source=TITLE_SOURCE_RESUME)
+            )
 
 
     async def _lock_in_derived_title(self, session_id: str, title: str) -> None:
@@ -1887,10 +1935,12 @@ class SessionRepositoryMixin:
         runtime_id = row["runtime_id"]
         title = row["title"]
         if not (isinstance(title, str) and title.strip()):
-            derived = await self._derive_title_from_first_user_message(session_id)
+            derived, resume_only = await self._derive_title_from_first_user_message(session_id)
             if derived:
                 title = derived
                 await self._lock_in_derived_title(session_id, derived)
+            elif resume_only:
+                await self._mark_resume_log(session_id)
         last_item_at = (latest.updatedAt or latest.completedAt or latest.createdAt) if latest else None
         sort_at = row.get("session_sort_at") or last_item_at or row["last_activity_at"] or row["created_at"]
         last_read_seq = int(row["last_read_seq"] or 0)
