@@ -55,6 +55,8 @@ export class SelectionPatchRequest {
 
 export class NoticeRespondRequest {
   actionId: string = '';
+  /** Answers for an `input_request`; approvals leave it null. */
+  input: Object | null = null;
 }
 
 export class WsTicketScope {

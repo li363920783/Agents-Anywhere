@@ -7,7 +7,7 @@ import { DashboardWatcher } from '../core/net/DashboardWatcher';
 import { Notifier } from '../core/notify/Notifier';
 import { Json } from '../core/util/Json';
 import { Fmt } from '../core/util/Fmt';
-import { Snapshot, TimelineItem, SessionView, Notice, NoticeAction, ToolContent, FileChangeContent, MarkerContent } from '../core/model/Session';
+import { Snapshot, TimelineItem, SessionView, Notice, NoticeAction, NoticeQuestion, NoticeQuestionOption, ToolContent, FileChangeContent, MarkerContent } from '../core/model/Session';
 import { EmptyBody, AttachmentRef, FileReadRequest, MessageSendRequest, NoticeRespondRequest, SelectionPatchRequest, SessionMetaPatch } from '../core/model/Bodies';
 import { ModelCatalog, ModelItem, PermissionCatalog, PermissionItem, TextFile } from '../core/model/Catalog';
 import { WorkspaceParam } from '../core/model/Workspace';
@@ -38,6 +38,8 @@ export struct SessionDetail {
   @State liveStatus: string = '';
   @State items: Array<TimelineItem> = [];
   @State notices: Array<Notice> = [];
+  /** Picked questionnaire options, keyed `<noticeId>|<questionId>|<optionId>`. */
+  @State picks: Array<string> = [];
   @State composer: string = '';
   @State takeover: boolean = false;
   @State takeoverBusy: boolean = false;
@@ -655,16 +657,87 @@ export struct SessionDetail {
     }
   }
 
-  private async respond(noticeId: string, actionId: string): Promise<void> {
+  private async respond(noticeId: string, actionId: string, input: Object | null = null): Promise<void> {
     try {
       const respondBody = new NoticeRespondRequest();
       respondBody.actionId = actionId;
+      respondBody.input = input;
       await ApiClient.shared.post(`/sessions/${this.sessionId}/runtime/notices/${noticeId}/respond`, respondBody);
       this.notices = this.notices.filter((n: Notice) => n.noticeId !== noticeId);
+      this.picks = this.picks.filter((k: string) => !k.startsWith(`${noticeId}|`));
     } catch (e) {
       const err = e as Error;
       this.toast(err instanceof ApiError ? err.message : 'respond failed');
     }
+  }
+
+  private pickKey(noticeId: string, questionId: string, optionId: string): string {
+    return `${noticeId}|${questionId}|${optionId}`;
+  }
+
+  private isPicked(noticeId: string, questionId: string, optionId: string): boolean {
+    return this.picks.indexOf(this.pickKey(noticeId, questionId, optionId)) >= 0;
+  }
+
+  private togglePick(noticeId: string, question: NoticeQuestion, optionId: string): void {
+    const key = this.pickKey(noticeId, question.questionId, optionId);
+    if (question.multiple) {
+      const at = this.picks.indexOf(key);
+      this.picks = at >= 0
+        ? this.picks.filter((k: string) => k !== key)
+        : this.picks.concat([key]);
+      return;
+    }
+    // Single select: drop the other options of this question, keep the rest.
+    const prefix = `${noticeId}|${question.questionId}|`;
+    this.picks = this.picks.filter((k: string) => !k.startsWith(prefix)).concat([key]);
+  }
+
+  private pickedOf(noticeId: string, questionId: string): Array<string> {
+    const prefix = `${noticeId}|${questionId}|`;
+    const out: Array<string> = [];
+    for (let i = 0; i < this.picks.length; i++) {
+      const key = this.picks[i];
+      if (key.startsWith(prefix)) {
+        out.push(key.substring(prefix.length));
+      }
+    }
+    return out;
+  }
+
+  private answersComplete(noticeId: string, questions: Array<NoticeQuestion>): boolean {
+    for (let i = 0; i < questions.length; i++) {
+      if (this.pickedOf(noticeId, questions[i].questionId).length === 0) {
+        return false;
+      }
+    }
+    return questions.length > 0;
+  }
+
+  /**
+   * Builds the connector's answer shape: `{"answers": {"q_0": {"optionIds":
+   * ["o_1"]}}}`. Assembled as JSON text because ArkTS will not accept a nested
+   * object literal here; the ids are ours, so there is nothing to escape.
+   */
+  private buildAnswers(noticeId: string, questions: Array<NoticeQuestion>): Object | null {
+    const parts: Array<string> = [];
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      const ids = JSON.stringify(this.pickedOf(noticeId, q.questionId));
+      parts.push(`"${q.questionId}":{"optionIds":${ids}}`);
+    }
+    if (parts.length === 0) {
+      return null;
+    }
+    return JSON.parse(`{"answers":{${parts.join(',')}}}`);
+  }
+
+  private submitAnswers(n: Notice): void {
+    const questions = n.questions();
+    if (!this.answersComplete(n.noticeId, questions)) {
+      return;
+    }
+    void this.respond(n.noticeId, 'submit', this.buildAnswers(n.noticeId, questions));
   }
 
   build() {
@@ -1303,16 +1376,101 @@ export struct SessionDetail {
           .wordBreak(WordBreak.BREAK_ALL)
           .width('100%')
       }
-      Row({ space: 8 }) {
-        ForEach(n.actions, (a: NoticeAction) => {
-          Button(a.label)
+      // A questionnaire: the questions live in `context.toolInput.questions`,
+      // not in `actions` — which only carries Submit/Cancel.
+      if (n.questions().length > 0) {
+        ForEach(n.questions(), (q: NoticeQuestion) => {
+          Column({ space: 8 }) {
+            if (q.header.length > 0) {
+              Text(q.header)
+                .fontSize(Theme.fontTiny)
+                .fontColor(Theme.faint)
+                .width('100%')
+            }
+            Text(q.prompt)
+              .fontSize(Theme.fontBody)
+              .fontColor(Theme.text)
+              .wordBreak(WordBreak.BREAK_ALL)
+              .width('100%')
+            if (q.multiple) {
+              Text('可多选')
+                .fontSize(Theme.fontTiny)
+                .fontColor(Theme.faint)
+                .width('100%')
+            }
+            ForEach(q.options, (o: NoticeQuestionOption) => {
+              Row({ space: 10 }) {
+                Stack() {
+                  Circle({ width: 18, height: 18 })
+                    .fill(this.isPicked(n.noticeId, q.questionId, o.optionId)
+                      ? Theme.accent : Color.Transparent)
+                    .stroke(Theme.border)
+                    .strokeWidth(1)
+                  if (this.isPicked(n.noticeId, q.questionId, o.optionId)) {
+                    Circle({ width: 7, height: 7 }).fill(Theme.onAccent)
+                  }
+                }
+                .width(18)
+                .height(18)
+
+                Column({ space: 2 }) {
+                  Text(o.label)
+                    .fontSize(Theme.fontSmall)
+                    .fontColor(Theme.text)
+                    .width('100%')
+                  if (o.description !== null && (o.description as string).length > 0) {
+                    Text(o.description as string)
+                      .fontSize(Theme.fontTiny)
+                      .fontColor(Theme.muted)
+                      .wordBreak(WordBreak.BREAK_ALL)
+                      .width('100%')
+                  }
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+              }
+              .width('100%')
+              .padding({ left: 10, right: 10, top: 10, bottom: 10 })
+              .backgroundColor(this.isPicked(n.noticeId, q.questionId, o.optionId)
+                ? Theme.accentTint : Theme.raised)
+              .borderRadius(10)
+              .onClick(() => this.togglePick(n.noticeId, q, o.optionId))
+            }, (o: NoticeQuestionOption) => `${q.questionId}-${o.optionId}`)
+          }
+          .width('100%')
+          .alignItems(HorizontalAlign.Start)
+        }, (q: NoticeQuestion) => `${n.noticeId}-${q.questionId}`)
+
+        Row({ space: 8 }) {
+          Button('取消')
             .fontSize(Theme.fontTiny)
             .height(32)
-            .backgroundColor(a.style === 'danger' ? Theme.danger : Theme.accent)
-            .fontColor(a.style === 'danger' ? '#FFFFFF' : Theme.onAccent)
+            .backgroundColor(Theme.raised)
+            .fontColor(Theme.muted)
             .borderRadius(Theme.radiusPill)
-            .onClick(() => this.respond(n.noticeId, a.actionId))
-        }, (a: NoticeAction) => `${n.noticeId}-${a.actionId}`)
+            .onClick(() => this.respond(n.noticeId, 'cancel'))
+          Button('提交')
+            .fontSize(Theme.fontTiny)
+            .height(32)
+            .enabled(this.answersComplete(n.noticeId, n.questions()))
+            .backgroundColor(Theme.accent)
+            .fontColor(Theme.onAccent)
+            .borderRadius(Theme.radiusPill)
+            .opacity(this.answersComplete(n.noticeId, n.questions()) ? 1 : 0.4)
+            .onClick(() => this.submitAnswers(n))
+        }
+      } else {
+        Row({ space: 8 }) {
+          ForEach(n.actions, (a: NoticeAction) => {
+            Button(a.label)
+              .fontSize(Theme.fontTiny)
+              .height(32)
+              .backgroundColor(a.style === 'danger' ? Theme.danger : Theme.accent)
+              .fontColor(a.style === 'danger' ? '#FFFFFF' : Theme.onAccent)
+              .borderRadius(Theme.radiusPill)
+              .onClick(() => this.respond(n.noticeId, a.actionId))
+          }, (a: NoticeAction) => `${n.noticeId}-${a.actionId}`)
+        }
       }
     }
     .padding(12)

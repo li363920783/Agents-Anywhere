@@ -208,6 +208,20 @@ export class NoticeAction {
   }
 }
 
+export class NoticeQuestionOption {
+  optionId: string = '';
+  label: string = '';
+  description: string | null = null;
+}
+
+export class NoticeQuestion {
+  questionId: string = '';
+  header: string = '';
+  prompt: string = '';
+  multiple: boolean = false;
+  options: Array<NoticeQuestionOption> = [];
+}
+
 export class Notice {
   noticeId: string = '';
   sessionId: string = '';
@@ -219,6 +233,44 @@ export class Notice {
   responseRequired: boolean = false;
   interactionType: string | null = null;
   actions: Array<NoticeAction> = [];
+  /**
+   * Runtime payload. For an `input_request` this is where the real questions
+   * live — `context.toolInput.questions` — while `actions` only carries the
+   * Submit/Cancel buttons. Dropping it left every questionnaire rendered as
+   * raw JSON.
+   */
+  context: Object | null = null;
+
+  /**
+   * The questions behind an `input_request`, or an empty list.
+   *
+   * Ids are derived by position (`q_<i>` / `o_<j>`) to match the connector's
+   * own scheme; the submit payload is keyed by them.
+   */
+  questions(): Array<NoticeQuestion> {
+    const input = Json.obj(this.context, 'toolInput');
+    const raw = Json.arr(input, 'questions') ?? [];
+    const out: Array<NoticeQuestion> = [];
+    for (let i = 0; i < raw.length; i++) {
+      const q = raw[i];
+      const item = new NoticeQuestion();
+      item.questionId = `q_${i}`;
+      item.prompt = Json.strOr(q, 'question', '');
+      item.header = Json.strOr(q, 'header', '');
+      item.multiple = Json.bool(q, 'multiSelect') ?? false;
+      const rawOptions = Json.arr(q, 'options') ?? [];
+      for (let j = 0; j < rawOptions.length; j++) {
+        const o = rawOptions[j];
+        const option = new NoticeQuestionOption();
+        option.optionId = `o_${j}`;
+        option.label = Json.strOr(o, 'label', '');
+        option.description = Json.str(o, 'description');
+        item.options.push(option);
+      }
+      out.push(item);
+    }
+    return out;
+  }
 
   static fromJson(o: Object | null): Notice {
     const n = new Notice();
@@ -232,6 +284,7 @@ export class Notice {
     n.responseRequired = Json.bool(o, 'responseRequired') ?? false;
     n.interactionType = Json.str(o, 'interactionType');
     n.actions = (Json.arr(o, 'actions') ?? []).map((raw: Object) => NoticeAction.fromJson(raw));
+    n.context = Json.obj(o, 'context');
     return n;
   }
 }
