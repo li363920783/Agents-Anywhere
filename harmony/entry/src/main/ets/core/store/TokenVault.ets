@@ -3,7 +3,7 @@ import util from '@ohos.util';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 const TAG = 'AA-Vault';
-const ALIAS = 'com.morin.agentsanywhere.token';
+const ALIAS = 'com.morin.clauderelay.token';
 const LABEL = 'auth-token';
 
 function utf8(text: string): Uint8Array {

@@ -3,7 +3,7 @@ import { common, wantAgent, Want, WantAgent } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 const TAG = 'AA-KeepAlive';
-const BUNDLE_NAME = 'com.morin.agentsanywhere';
+const BUNDLE_NAME = 'com.morin.clauderelay';
 const ABILITY_NAME = 'EntryAbility';
 
 /**

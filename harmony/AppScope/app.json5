@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "com.morin.agentsanywhere",
+    "bundleName": "com.morin.clauderelay",
     "vendor": "morin",
     "versionCode": 1000000,
     "versionName": "0.1.0",

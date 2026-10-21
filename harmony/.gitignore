@@ -15,3 +15,6 @@ agconnect-services*.json
 *.hsp
 oh-package-lock.json5
 /.codegenie/
+
+# Local signing material (absolute cert paths + passwords); DevEco regenerates it.
+/build-profile.json5

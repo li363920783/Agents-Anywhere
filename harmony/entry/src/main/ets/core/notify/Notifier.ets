@@ -5,7 +5,7 @@ import { SessionView } from '../model/Session';
 import { Prefs } from '../store/Prefs';
 
 const TAG = 'AA-Notifier';
-const BUNDLE_NAME = 'com.morin.agentsanywhere';
+const BUNDLE_NAME = 'com.morin.clauderelay';
 const ABILITY_NAME = 'EntryAbility';
 const GROUP = 'aa-sessions';
 
