@@ -66,13 +66,29 @@ class ClaudeModelDiscovery:
     def cached_models(self) -> tuple[dict[str, Any], ...]:
         return self._models or ()
 
-    async def models(self) -> tuple[dict[str, Any], ...] | None:
+    async def models(
+        self,
+        *,
+        stale_ok: bool = False,
+    ) -> tuple[dict[str, Any], ...] | None:
+        """Return the CLI model list, reading it if the cache cannot answer.
+
+        `stale_ok` serves the last good list on TTL expiry and refreshes behind
+        the caller. A refresh is a full SDK handshake (~4-5s, measured), so a
+        caller that a client is blocked on must opt in; everyone else keeps the
+        original blocking behaviour and observes fresh data on the first read
+        after expiry.
+        """
         fingerprint = claude_settings_fingerprint()
-        if fingerprint != self._settings_fingerprint:
+        settings_changed = fingerprint != self._settings_fingerprint
+        if settings_changed:
             self._settings_fingerprint = fingerprint
             self._attempted = False
             self._expires_at = 0.0
         if self._attempted and self.clock() < self._expires_at:
+            return self._models
+        if stale_ok and self._models is not None and not settings_changed:
+            self._start_refresh()
             return self._models
         if self._inflight is None:
             self._inflight = asyncio.create_task(self._refresh())
@@ -82,6 +98,19 @@ class ClaudeModelDiscovery:
         finally:
             if self._inflight is inflight and inflight.done():
                 self._inflight = None
+
+    def _start_refresh(self) -> None:
+        if self._inflight is not None:
+            return
+        task = asyncio.create_task(self._refresh())
+        self._inflight = task
+        task.add_done_callback(self._refresh_finished)
+
+    def _refresh_finished(self, task: asyncio.Task[Any]) -> None:
+        if self._inflight is task:
+            self._inflight = None
+        if not task.cancelled():
+            task.exception()
 
     async def _refresh(self) -> tuple[dict[str, Any], ...] | None:
         started = self.clock()
