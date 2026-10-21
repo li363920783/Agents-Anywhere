@@ -25,6 +25,12 @@ export struct Login {
   @State serverUrl: string = DEFAULT_SERVER;
   @State serverOk: boolean = false;
   @State serverHint: string = 'Check the server before signing in.';
+  /**
+   * The official server is the default and its URL field stays out of the way;
+   * self-hosting is opt-in. Without this the screen reads as a tool that only
+   * talks to your own box.
+   */
+  @State selfHosted: boolean = false;
   @State email: string = '';
   @State password: string = '';
   @State busy: boolean = false;
@@ -35,6 +41,13 @@ export struct Login {
     const saved = Prefs.getString(Prefs.keys.serverUrl, '');
     if (saved.length > 0) {
       this.serverUrl = saved;
+      this.selfHosted = saved !== DEFAULT_SERVER;
+    }
+    if (!this.selfHosted) {
+      // `signIn` refuses until the server has been checked, and the Check
+      // button lives in the self-hosted panel — so probe the official server
+      // up front rather than making the user reveal a field to press it.
+      void this.checkServer();
     }
   }
 
@@ -169,44 +182,78 @@ export struct Login {
           .margin({ bottom: 28 })
       }
 
-      Column({ space: 12 }) {
-        Text('SERVER')
-          .fontSize(Theme.fontTiny)
-          .fontColor(Theme.faint)
-          .alignSelf(ItemAlign.Start)
-        Row({ space: 8 }) {
-          TextInput({ placeholder: 'https://…', text: this.serverUrl })
-            .height(44)
-            .layoutWeight(1)
-            .fontSize(Theme.fontSmall)
-            .backgroundColor(Theme.bg)
-            .fontColor(Theme.text)
-            .caretColor(Theme.accent)
-            .placeholderColor(Theme.faint)
-            .borderRadius(10)
-            .onChange((v: string) => {
-              this.serverUrl = v;
-              this.serverOk = false;
-            })
-          Button('Check')
-            .height(44)
-            .fontSize(Theme.fontSmall)
-            .enabled(!this.busy)
-            .backgroundColor(Theme.raised)
-            .fontColor(Theme.text)
-            .border({ width: 1, color: Theme.border })
-            .borderRadius(10)
-            .onClick(() => this.checkServer())
+      if (this.selfHosted) {
+        Column({ space: 12 }) {
+          Row() {
+            Text('SERVER')
+              .fontSize(Theme.fontTiny)
+              .fontColor(Theme.faint)
+              .layoutWeight(1)
+            Text('用官方服务器')
+              .fontSize(Theme.fontTiny)
+              .fontColor(Theme.accent)
+              .onClick(() => {
+                this.selfHosted = false;
+                this.serverUrl = DEFAULT_SERVER;
+                this.serverOk = false;
+                void this.checkServer();
+              })
+          }
+          .width('100%')
+
+          Row({ space: 8 }) {
+            TextInput({ placeholder: 'https://…', text: this.serverUrl })
+              .height(44)
+              .layoutWeight(1)
+              .fontSize(Theme.fontSmall)
+              .backgroundColor(Theme.bg)
+              .fontColor(Theme.text)
+              .caretColor(Theme.accent)
+              .placeholderColor(Theme.faint)
+              .borderRadius(10)
+              .onChange((v: string) => {
+                this.serverUrl = v;
+                this.serverOk = false;
+              })
+            Button('Check')
+              .height(44)
+              .fontSize(Theme.fontSmall)
+              .enabled(!this.busy)
+              .backgroundColor(Theme.raised)
+              .fontColor(Theme.text)
+              .border({ width: 1, color: Theme.border })
+              .borderRadius(10)
+              .onClick(() => this.checkServer())
+          }
+          Text(this.serverHint)
+            .fontSize(Theme.fontTiny)
+            .fontColor(this.serverOk ? Theme.accent : Theme.warn)
+            .alignSelf(ItemAlign.Start)
         }
-        Text(this.serverHint)
-          .fontSize(Theme.fontTiny)
-          .fontColor(this.serverOk ? Theme.accent : Theme.warn)
-          .alignSelf(ItemAlign.Start)
+        .padding(16)
+        .backgroundColor(Theme.surface)
+        .borderRadius(Theme.radiusCard)
+        .margin({ left: 24, right: 24, top: 8 })
+      } else {
+        Row({ space: 8 }) {
+          Text('官方服务器')
+            .fontSize(Theme.fontTiny)
+            .fontColor(Theme.muted)
+          Text(this.serverOk ? '可用' : this.serverHint)
+            .fontSize(Theme.fontTiny)
+            .fontColor(this.serverOk ? Theme.accent : Theme.warn)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+          Text('用自建服务器')
+            .fontSize(Theme.fontTiny)
+            .fontColor(Theme.accent)
+            .onClick(() => {
+              this.selfHosted = true;
+            })
+        }
+        .margin({ left: 24, right: 24, top: 8 })
       }
-      .padding(16)
-      .backgroundColor(Theme.surface)
-      .borderRadius(Theme.radiusCard)
-      .margin({ left: 24, right: 24, top: 8 })
 
       Column({ space: 12 }) {
         Text('ACCOUNT')

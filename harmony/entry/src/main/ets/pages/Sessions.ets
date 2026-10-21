@@ -5,7 +5,8 @@ import { ApiError } from '../core/net/ApiError';
 import { DashboardWatcher, SESSIONS_KEY, UNREAD_KEY } from '../core/net/DashboardWatcher';
 import { Fmt } from '../core/util/Fmt';
 import { SessionView } from '../core/model/Session';
-import { SessionMetaPatch } from '../core/model/Bodies';
+import { SessionMetaPatch, CreateAndStartRequest } from '../core/model/Bodies';
+import { Json } from '../core/util/Json';
 import { ConnectorListResponse, ConnectorView } from '../core/model/Connector';
 import { Theme } from '../core/ui/Theme';
 import { StatusChip, StatusDot } from '../core/ui/Status';
@@ -50,6 +51,9 @@ function isResumeLog(title: string | null): boolean {
   return t.startsWith('below is a conversation log') || t.startsWith('以下是一段来自');
 }
 
+/** Statuses that mean the agent is working right now. */
+const LIVE_STATUSES: Array<string> = ['running', 'pending', 'stopping', 'waiting'];
+
 @Component
 export struct Sessions {
   @Consume('rootStack') rootStack: NavPathStack;
@@ -65,6 +69,8 @@ export struct Sessions {
   @State groups: Array<ProjectGroup> = [];
   @State connectors: Array<ConnectorView> = [];
   @State deviceFilter: string = '';
+  /** '' = all; otherwise 'unread' | 'live' | 'attention'. */
+  @State statusFilter: string = '';
   @State hideLogs: boolean = true;
   @State hiddenLogCount: number = 0;
   @State loading: boolean = true;
@@ -77,6 +83,14 @@ export struct Sessions {
   @State pressedId: string = '';
   /** Y of the skeleton's sweeping highlight. */
   @State sweep: number = -140;
+  /** New-session composer, opened from a project header. */
+  @State composing: boolean = false;
+  @State creating: boolean = false;
+  @State newGroupName: string = '';
+  @State newConnectorId: string = '';
+  @State newProjectId: string = '';
+  @State newRuntime: string = '';
+  @State newDraft: string = '';
   private revealTimer: number = -1;
 
   /**
@@ -147,6 +161,20 @@ export struct Sessions {
     }
   }
 
+  /** Status facet. Kept beside the device filter so both narrow the same pass. */
+  private matchesStatus(item: SessionView): boolean {
+    if (this.statusFilter === 'unread') {
+      return item.unread;
+    }
+    if (this.statusFilter === 'live') {
+      return LIVE_STATUSES.indexOf(item.status) >= 0;
+    }
+    if (this.statusFilter === 'attention') {
+      return item.status === 'waiting_approval';
+    }
+    return true;
+  }
+
   private matches(item: SessionView, q: string): boolean {
     const haystack = [
       item.title ?? '',
@@ -174,6 +202,9 @@ export struct Sessions {
         continue;
       }
       if (this.deviceFilter.length > 0 && item.connectorId !== this.deviceFilter) {
+        continue;
+      }
+      if (this.statusFilter.length > 0 && !this.matchesStatus(item)) {
         continue;
       }
       if (isResumeLog(item.title)) {
@@ -209,6 +240,93 @@ export struct Sessions {
     this.groups = groups;
   }
 
+  /** The unread chip is a shortcut to whatever is still unread. */
+  private openFirstUnread(): void {
+    let fallback: SessionView | null = null;
+    for (let i = 0; i < this.all.length; i++) {
+      const item = this.all[i];
+      if (!item.unread) {
+        continue;
+      }
+      if (!item.archived) {
+        this.openSession(item.id);
+        return;
+      }
+      if (fallback === null) {
+        fallback = item;
+      }
+    }
+    if (fallback !== null) {
+      this.openSession(fallback.id);
+    }
+  }
+
+  private openSession(id: string): void {
+    const param = new SessionDetailParam();
+    param.id = id;
+    this.rootStack.pushPath(new NavPathInfo('SessionDetail', param));
+  }
+
+  /**
+   * Resolves what a new session needs from a row already in the group. The list
+   * groups by a derived project *name*, so the ids have to come from a real
+   * session — the group itself only knows the name.
+   */
+  private startCompose(group: ProjectGroup): void {
+    let seed: SessionView | null = null;
+    for (let i = 0; i < group.items.length; i++) {
+      const candidate = group.items[i];
+      const pid = candidate.projectId;
+      if (pid !== null && pid.length > 0) {
+        seed = candidate;
+        break;
+      }
+    }
+    if (seed === null) {
+      promptAction.showToast({
+        message: '这个项目没有可用的 projectId，无法新建会话',
+        duration: 2000
+      });
+      return;
+    }
+    this.newGroupName = group.name;
+    this.newConnectorId = seed.connectorId;
+    this.newProjectId = seed.projectId ?? '';
+    this.newRuntime = seed.runtime;
+    this.newDraft = '';
+    this.composing = true;
+  }
+
+  private async createAndStart(): Promise<void> {
+    const content = this.newDraft.trim();
+    if (content.length === 0 || this.creating) {
+      return;
+    }
+    this.creating = true;
+    try {
+      const body = new CreateAndStartRequest();
+      body.connectorId = this.newConnectorId;
+      body.projectId = this.newProjectId;
+      body.runtime = this.newRuntime;
+      body.content = content;
+      const res = await ApiClient.shared.post('/sessions/create-and-start', body);
+      const created = SessionView.fromJson(Json.obj(res, 'session'));
+      this.composing = false;
+      this.newDraft = '';
+      if (created.id.length > 0) {
+        this.openSession(created.id);
+      }
+    } catch (e) {
+      const err = e as Error;
+      promptAction.showToast({
+        message: err instanceof ApiError ? err.message : 'create failed',
+        duration: 2000
+      });
+    } finally {
+      this.creating = false;
+    }
+  }
+
   /** The dashboard socket pushes a fresh snapshot after every meta change. */
   private async patchMeta(id: string, patch: SessionMetaPatch): Promise<void> {
     try {
@@ -235,6 +353,7 @@ export struct Sessions {
             .borderRadius(Theme.radiusPill)
             .shadow({ radius: 10, color: Theme.accent, offsetX: 0, offsetY: 0 })
             .maxLines(1)
+            .onClick(() => this.openFirstUnread())
         }
         Blank().layoutWeight(1)
         Button(this.archived ? 'Archived' : 'Active')
@@ -251,6 +370,10 @@ export struct Sessions {
       }
       .width(Theme.gutter)
       .padding({ top: 12, bottom: 10 })
+
+      if (this.composing) {
+        this.Composer()
+      }
 
       TextInput({ placeholder: 'Search sessions, worktrees, projects…', text: this.query })
         .height(40)
@@ -269,6 +392,10 @@ export struct Sessions {
 
       Scroll() {
         Row({ space: 8 }) {
+          this.FilterChip('全部', '')
+          this.FilterChip('未读', 'unread')
+          this.FilterChip('运行中', 'live')
+          this.FilterChip('待确认', 'attention')
           if (this.connectors.length > 1) {
             this.DeviceChip('All devices', '')
             ForEach(this.connectors, (c: ConnectorView) => {
@@ -309,7 +436,7 @@ export struct Sessions {
                 // its key carries the collapsed flag so ArkUI re-runs the branch
                 // (a ForEach branch is only re-evaluated when its key changes).
                 ListItem() {
-                  this.GroupHeader(group.name, group.items.length, this.isCollapsed(group.name))
+                  this.GroupHeader(group, this.isCollapsed(group.name))
                 }
                 if (!this.isCollapsed(group.name)) {
                   ForEach(group.items, (item: SessionView, index: number) => {
@@ -323,7 +450,12 @@ export struct Sessions {
                         }
                       }
                     })
-                  }, (item: SessionView) => `${item.id}-${item.updatedSeq}-${item.pinned}-${item.archived}`)
+                  }, (item: SessionView) =>
+                  // `status` and `connectorStatus` belong in the key: a status
+                  // change does not necessarily bump `updatedSeq`, and a ForEach
+                  // branch is only re-evaluated when its key changes — which is
+                  // why rows sat on a stale status.
+                  `${item.id}-${item.updatedSeq}-${item.status}-${item.connectorStatus}-${item.pinned}-${item.archived}-${item.unread}`)
                 }
               }, (group: ProjectGroup) => `${group.name}-${this.isCollapsed(group.name) ? 1 : 0}`)
 
@@ -404,6 +536,88 @@ export struct Sessions {
     .clip(true)
   }
 
+  /**
+   * New-session composer. Inline rather than a sheet or dialog: the target
+   * project has to stay visible, and it keeps the whole flow on one screen.
+   */
+  @Builder
+  Composer() {
+    Column({ space: 10 }) {
+      Row({ space: 8 }) {
+        Text(`在 ${this.newGroupName} 新建会话`)
+          .fontSize(Theme.fontTiny)
+          .fontColor(Theme.muted)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+        Text('取消')
+          .fontSize(Theme.fontTiny)
+          .fontColor(Theme.muted)
+          .onClick(() => {
+            this.composing = false;
+          })
+      }
+      .width('100%')
+
+      TextArea({ placeholder: '第一条消息…', text: this.newDraft })
+        .height(70)
+        .fontSize(Theme.fontSmall)
+        .backgroundColor(Theme.bg)
+        .fontColor(Theme.text)
+        .caretColor(Theme.accent)
+        .placeholderColor(Theme.faint)
+        .borderRadius(10)
+        .onChange((v: string) => {
+          this.newDraft = v;
+        })
+
+      Row({ space: 8 }) {
+        Text(`${this.newRuntime} · ${this.newConnectorId}`)
+          .fontSize(Theme.fontTiny)
+          .fontColor(Theme.faint)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+        Button(this.creating ? '创建中…' : '创建并发送')
+          .height(34)
+          .fontSize(Theme.fontTiny)
+          .enabled(!this.creating && this.newDraft.trim().length > 0)
+          .backgroundColor(Theme.accent)
+          .fontColor(Theme.onAccent)
+          .borderRadius(Theme.radiusPill)
+          .opacity(!this.creating && this.newDraft.trim().length > 0 ? 1 : 0.4)
+          .onClick(() => {
+            void this.createAndStart();
+          })
+      }
+      .width('100%')
+    }
+    .width(Theme.gutter)
+    .padding(14)
+    .backgroundColor(Theme.surface)
+    .borderRadius(Theme.radiusCard)
+    .border({ width: 1, color: Theme.haloSoft })
+    .shadow({ radius: 12, color: Theme.shadow, offsetX: 0, offsetY: 3 })
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  /** Status facet chip. Distinct from the device chips so the two read apart. */
+  @Builder
+  FilterChip(label: string, value: string) {
+    Text(label)
+      .fontSize(Theme.fontTiny)
+      .fontColor(this.statusFilter === value ? Theme.accent : Theme.muted)
+      .backgroundColor(this.statusFilter === value ? Theme.accentTint : Theme.raised)
+      .border({ width: 1, color: this.statusFilter === value ? Theme.accent : Theme.border })
+      .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+      .borderRadius(Theme.radiusPill)
+      .maxLines(1)
+      .onClick(() => {
+        this.statusFilter = value;
+        this.applyFilter();
+      })
+  }
+
   @Builder
   DeviceChip(label: string, id: string) {
     Text(label)
@@ -437,28 +651,36 @@ export struct Sessions {
   }
 
   @Builder
-  GroupHeader(name: string, count: number, collapsed: boolean) {
+  GroupHeader(group: ProjectGroup, collapsed: boolean) {
     Row({ space: 8 }) {
       SymbolGlyph($r('sys.symbol.chevron_right'))
         .fontSize(13)
         .fontColor([Theme.muted])
         .rotate({ angle: collapsed ? 0 : 90 })
         .width(14)
-      Text(name)
+      Text(group.name)
         .fontSize(Theme.fontTiny)
         .fontColor(Theme.muted)
         .fontFamily('monospace')
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
-      Text(`${count}`)
+      Text(`${group.items.length}`)
         .fontSize(Theme.fontTiny)
         .fontColor(Theme.faint)
+      // Its own tap target, so starting a session does not also toggle the
+      // group. Plain ASCII '+': the full-width '＋' is missing from the system
+      // font and renders as nothing at all.
+      Text('+')
+        .fontSize(Theme.fontHeading)
+        .fontColor(Theme.accent)
+        .padding({ left: 10, right: 4 })
+        .onClick(() => this.startCompose(group))
     }
     .width('100%')
     .padding({ top: Theme.spaceLg, bottom: Theme.spaceSm })
     .backgroundColor(Color.Transparent)
-    .onClick(() => this.toggleGroup(name))
+    .onClick(() => this.toggleGroup(group.name))
   }
 
   @Builder

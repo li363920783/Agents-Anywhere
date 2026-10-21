@@ -8,7 +8,7 @@ import { Notifier } from '../core/notify/Notifier';
 import { Json } from '../core/util/Json';
 import { Fmt } from '../core/util/Fmt';
 import { Snapshot, TimelineItem, SessionView, Notice, NoticeAction, ToolContent, FileChangeContent, MarkerContent } from '../core/model/Session';
-import { EmptyBody, AttachmentRef, FileReadRequest, MessageSendRequest, NoticeRespondRequest, SelectionPatchRequest } from '../core/model/Bodies';
+import { EmptyBody, AttachmentRef, FileReadRequest, MessageSendRequest, NoticeRespondRequest, SelectionPatchRequest, SessionMetaPatch } from '../core/model/Bodies';
 import { ModelCatalog, ModelItem, PermissionCatalog, PermissionItem, TextFile } from '../core/model/Catalog';
 import { WorkspaceParam } from '../core/model/Workspace';
 import { picker, fileIo } from '@kit.CoreFileKit';
@@ -17,6 +17,7 @@ import { camera } from '@kit.CameraKit';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import { MarkdownView } from '../ui/MarkdownView';
 import { Theme } from '../core/ui/Theme';
+import { StatusChip, StatusDot } from '../core/ui/Status';
 
 /** Body of an optimistic user bubble, shaped like the server's message payload. */
 class LocalMessageContent {
@@ -34,6 +35,9 @@ export struct SessionDetail {
   @State takeover: boolean = false;
   @State takeoverBusy: boolean = false;
   @State atBottom: boolean = true;
+  /** Inline rename of the session title. */
+  @State renaming: boolean = false;
+  @State nameDraft: string = '';
   /** Id of the optimistic bubble shown while a send is in flight. */
   @State pendingId: string = '';
   @State connected: boolean = false;
@@ -122,8 +126,44 @@ export struct SessionDetail {
       this.loading = false;
     }
     this.connectStream();
+    void this.markRead();
     void this.loadCatalogs();
     this.scrollToBottom(120);
+  }
+
+  /**
+   * Opening a session is what "reading" it means. Both the row's unread dot and
+   * the header badge are derived server-side from `last_read_seq`, so they only
+   * clear once this lands — without it the badge never came down.
+   */
+  private async markRead(): Promise<void> {
+    try {
+      await ApiClient.shared.post('/sessions/read', [this.sessionId]);
+    } catch (e) {
+      // Best effort. A lost receipt is corrected by the next open, and it must
+      // not stop the session from being usable.
+    }
+  }
+
+  /** Renames the session; the dashboard snapshot pushes the new title back. */
+  private async saveName(): Promise<void> {
+    const name = this.nameDraft.trim();
+    if (name.length === 0) {
+      this.renaming = false;
+      return;
+    }
+    try {
+      const patch = new SessionMetaPatch();
+      patch.title = name;
+      await ApiClient.shared.patch(`/sessions/${this.sessionId}/meta`, patch);
+      this.renaming = false;
+    } catch (e) {
+      const err = e as Error;
+      promptAction.showToast({
+        message: err instanceof ApiError ? err.message : 'rename failed',
+        duration: 1500
+      });
+    }
   }
 
   private scrollToBottom(delay: number): void {
@@ -523,7 +563,14 @@ export struct SessionDetail {
         sendBody.attachments = attachments;
       }
       sendBody.clientMessageId = clientMessageId;
-      await ApiClient.shared.post(`/sessions/${this.sessionId}/runtime/messages`, sendBody);
+      // A running turn can only be *steered* while the session is taken over;
+      // the server rejects it otherwise ("read-only until takeover is
+      // enabled"). Without takeover the message still queues for the next turn,
+      // which is what `/messages` already does — so this is a routing choice,
+      // not a gate.
+      const steering = this.takeover && Fmt.statusLive(this.session?.status ?? '');
+      const endpoint = steering ? 'steer' : 'messages';
+      await ApiClient.shared.post(`/sessions/${this.sessionId}/runtime/${endpoint}`, sendBody);
       this.pendingParts = [];
       this.pendingCount = 0;
     } catch (e) {
@@ -610,12 +657,41 @@ export struct SessionDetail {
           .fill(this.session?.connectorStatus === 'online' ? Theme.accent : Theme.faint)
           .margin({ top: 6 })
         Column({ space: 3 }) {
-          Text(this.session?.title ?? this.session?.cwd ?? this.sessionId)
-            .fontSize(Theme.fontHeading)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(Theme.text)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          if (this.renaming) {
+            Row({ space: 8 }) {
+              TextInput({ text: this.nameDraft })
+                .height(36)
+                .layoutWeight(1)
+                .fontSize(Theme.fontBody)
+                .backgroundColor(Theme.raised)
+                .fontColor(Theme.text)
+                .caretColor(Theme.accent)
+                .borderRadius(8)
+                .onChange((v: string) => {
+                  this.nameDraft = v;
+                })
+                .onSubmit(() => {
+                  void this.saveName();
+                })
+              Button('保存')
+                .height(36)
+                .fontSize(Theme.fontTiny)
+                .backgroundColor(Theme.accent)
+                .fontColor(Theme.onAccent)
+                .borderRadius(8)
+                .onClick(() => {
+                  void this.saveName();
+                })
+            }
+            .width('100%')
+          } else {
+            Text(this.session?.title ?? this.session?.cwd ?? this.sessionId)
+              .fontSize(Theme.fontHeading)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(Theme.text)
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
           if (this.branchLabel().length > 0) {
             Text(this.branchLabel())
               .fontSize(Theme.fontTiny)
@@ -636,10 +712,26 @@ export struct SessionDetail {
       .padding({ top: 10, bottom: 6 })
 
       Row({ space: 8 }) {
-        Text(Fmt.statusLabel(this.session?.status ?? ''))
-          .fontSize(Theme.fontTiny)
-          .fontColor(Fmt.statusColor(this.session?.status ?? ''))
+        StatusDot({
+          color: Fmt.statusColor(this.session?.status ?? ''),
+          pulse: Fmt.statusLive(this.session?.status ?? ''),
+          diameter: 8
+        })
+        StatusChip({
+          label: Fmt.statusLabel(this.session?.status ?? ''),
+          color: Fmt.statusColor(this.session?.status ?? '')
+        })
         Blank().layoutWeight(1)
+        Text('重命名')
+          .fontSize(Theme.fontTiny)
+          .fontColor(Theme.muted)
+          .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+          .border({ width: 1, color: Theme.border })
+          .borderRadius(Theme.radiusPill)
+          .onClick(() => {
+            this.nameDraft = this.session?.title ?? '';
+            this.renaming = true;
+          })
         Text('工作区')
           .fontSize(Theme.fontTiny)
           .fontColor(Theme.muted)
@@ -674,7 +766,17 @@ export struct SessionDetail {
               this.NoticeCard(n)
             }, (n: Notice) => n.noticeId)
             ForEach(this.items, (item: TimelineItem) => {
-              this.TimelineRow(item)
+              // The wrapper exists for the transition: a @Builder call cannot
+              // take modifiers, and every new item — optimistic or streamed —
+              // should fade in rather than appear.
+              Column() {
+                this.TimelineRow(item)
+              }
+              .width('100%')
+              .transition(TransitionEffect.OPACITY.animation({
+                duration: 240,
+                curve: Curve.EaseOut
+              }))
             }, (item: TimelineItem) => `${item.id}-${item.revision}-${item.updatedSeq}`)
             if (this.loading && this.items.length === 0) {
               LoadingProgress()
@@ -751,6 +853,24 @@ export struct SessionDetail {
       }
       .width(Theme.gutter)
       .padding({ top: 6 })
+
+      // Without this the page looks identical whether the agent is working or
+      // idle — the only cue was a word in the header.
+      if (Fmt.statusLive(this.session?.status ?? '')) {
+        Row({ space: 7 }) {
+          StatusDot({
+            color: Fmt.statusColor(this.session?.status ?? ''),
+            pulse: true,
+            diameter: 8
+          })
+          Text(`Agent 正在运行 · ${Fmt.statusLabel(this.session?.status ?? '')}`)
+            .fontSize(Theme.fontTiny)
+            .fontColor(Theme.muted)
+          Blank().layoutWeight(1)
+        }
+        .width(Theme.gutter)
+        .padding({ top: 8 })
+      }
 
       Row({ space: 8 }) {
         Button(this.pendingCount > 0 ? `+${this.pendingCount}` : '+')

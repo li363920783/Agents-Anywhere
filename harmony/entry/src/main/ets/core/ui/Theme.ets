@@ -81,6 +81,9 @@ export class Theme {
     return `#1F${color.substring(3)}`;
   }
 
+  /** Tint of the accent resource, which `tint` cannot take (it is not a string). */
+  static readonly accentTint: string = '#1F007DFF';
+
   // Shape
   static readonly gutter: string = '92%';
   static readonly radiusCard: number = 14;

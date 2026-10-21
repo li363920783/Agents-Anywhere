@@ -26,6 +26,17 @@ export class SessionMetaPatch {
   archived: boolean | null = null;
 }
 
+/**
+ * `POST /sessions/create-and-start`. The server forbids extra fields, so only
+ * the ones it requires are declared — the rest have defaults there.
+ */
+export class CreateAndStartRequest {
+  connectorId: string = '';
+  projectId: string = '';
+  runtime: string = '';
+  content: string = '';
+}
+
 export class MessageSendRequest {
   content: string = '';
   attachments: Array<Object> = [];

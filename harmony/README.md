@@ -420,21 +420,36 @@ python3 tools/make-icons.py
 
 ## 13. 出上架包
 
+**两种 profile 必须并存，因为它们的用途正好互斥。** `build-profile.json5` 里配了两个
+product，按需要选：
+
 ```bash
-hvigorw assembleApp --mode project -p product=default -p buildMode=release
-# → build/outputs/default/harmony-default-signed.app
+# 日常开发 / 真机调试 —— internaltesting profile，可以用 hdc install
+hvigorw assembleHap --mode module -p product=default
+
+# 上架 —— app_gallery profile，能用 hdc install 才怪
+hvigorw assembleApp --mode project -p product=gallery -p buildMode=release
+# → build/outputs/gallery/harmony-gallery-signed.app
 ```
 
-**Profile 必须选「发布 Profile」。** AGC 里两种 release profile 只差一个字段，
-肉眼几乎分不出：
+| product | profile | `app-distribution-type` | hdc 安装 | 上架 |
+| --- | --- | --- | --- | --- |
+| `default` | ClaudeRelay-releaseRelease.p7b | `internaltesting` | ✅ | ❌ 报 7025 |
+| `gallery` | ClaudeRelay-publicRelease.p7b | `app_gallery` | ❌ | ✅ |
 
-| AGC 里的类型 | `app-distribution-type` | 能上架吗 |
-| --- | --- | --- |
-| 发布 Profile | `app_gallery` | ✅ |
-| 指定设备发布 Profile | `internaltesting` | ❌ 报 7025 |
+**踩过的坑**：只留一个 `gallery` profile 时，`hdc install` 会失败并打印
 
-选错的报错是「当前软件包不支持上架到应用市场」，看不出是 profile 的问题。
-打包后不用传上去就能自查：
+```
+error: failed to install bundle. code:9568322
+error: signature verification failed due to not trusted app source
+```
+
+但 `hdc install` **仍然以退出码 0 结束**，只把 `AppMod finish` 打在最后一行 ——
+`| tail -1` 正好把错误吞掉，于是看起来"装上了"，实际设备上跑的还是旧包，
+后面所有验证都是在验证旧代码。**判断安装是否成功要 grep `install bundle successfully`，
+不要看退出码。**
+
+打包后不用传上去就能自查包里用的是哪个 profile：
 
 ```bash
 JAR=$SDK/default/openharmony/toolchains/lib/hap-sign-tool.jar
@@ -453,3 +468,6 @@ python3 tools/make-store-shots.py <原图目录> <输出目录>
 `make-store-shots.py` 把 1320×2848 的真机图补成 AGC 要的 1080×1920（9:16）：
 手机屏比 9:16 更窄长，**直接裁会切掉底部悬浮页签栏**，所以改成缩放到满高、
 两侧用截图自身的边缘像素拉伸补齐（背景是渐变，接缝看不出来）。
+
+**模拟器不能用来测这个应用**：DevEco 模拟器网络 RTT 实测 33 秒（`ping 223.5.5.5`），
+而 release 签名的应用启动前必须联网验证，会直接卡在「无法验证应用」。
