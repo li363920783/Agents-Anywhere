@@ -6,6 +6,7 @@ import { Prefs } from '../core/store/Prefs';
 import { KeepAlive } from '../core/notify/KeepAlive';
 import { DashboardWatcher } from '../core/net/DashboardWatcher';
 import { Notifier, WANT_SESSION_KEY } from '../core/notify/Notifier';
+import { LiveView } from '../core/notify/LiveView';
 import { Appearance } from '../core/ui/Appearance';
 
 /** AppStorage key the Index page watches to open a session from a notification tap. */
@@ -18,6 +19,10 @@ export default class EntryAbility extends UIAbility {
     Notifier.attach(this.context);
     Appearance.attach(this.context);
     Appearance.restore();
+    // A process killed mid-turn leaves its 实况窗 behind, and that card's id
+    // only ever lived in the dead process — so stop it before anything else can
+    // start a second one.
+    void LiveView.reap();
     this.routeFromWant(want);
     hilog.info(0x0000, 'AgentsAnywhere', 'ability onCreate');
     void AppState.shared.restore().then(() => {

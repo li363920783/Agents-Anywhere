@@ -4,10 +4,14 @@ import { wantAgent, Want, WantAgent } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { WANT_SESSION_KEY } from './Notifier';
+import { Prefs } from '../store/Prefs';
 
 const TAG = 'AA-LiveView';
 const BUNDLE_NAME = 'com.morin.clauderelay';
 const ABILITY_NAME = 'EntryAbility';
+
+/** Title for a stop payload; the SDK rejects an empty one. */
+const FALLBACK_TITLE = 'Agents Anywhere';
 
 /**
  * Scenario value. It must match the scenario registered for this app in AGC —
@@ -19,9 +23,10 @@ const ABILITY_NAME = 'EntryAbility';
  */
 const EVENT = 'TIMER';
 
-/** 8-digit #AARRGGBB; the SDK rejects 6-digit colours here. */
-const ACCENT = '#FF3FB950';
-const TRACK = '#333FB950';
+/** 8-digit #AARRGGBB; the SDK rejects 6-digit colours here. Brand blue, so the
+ *  card matches the app's accent instead of standing out as a foreign green. */
+const ACCENT = '#FF007DFF';
+const TRACK = '#33007DFF';
 
 /**
  * Progress shown while running. A turn has no measurable completion, so the bar
@@ -43,6 +48,9 @@ const STOP_SEQUENCE = 2147483647;
 /** Icon names resolve against `resources/rawfile/`. */
 const ICON_APP = 'lv_app.png';
 const ICON_RUN = 'lv_run.png';
+const ICON_DONE = 'lv_done.png';
+/** Lock-screen immersive picture, revealed when the capsule is pressed. */
+const LOCK_PICTURE = 'lv_backdrop.png';
 
 /**
  * 实况窗 for the session that currently needs the user.
@@ -62,6 +70,50 @@ export class LiveView {
   private static sequence: number = 0;
   /** New per start: a reused id collides with the previous card's archive slot. */
   private static id: number = 0;
+  private static loaded: boolean = false;
+
+  /**
+   * Restores the card id from a previous process. Without this `hide` cannot
+   * reach an orphan — the id only ever lived in the dead process's memory — so
+   * the card is never stopped and every later run starts yet another one.
+   * That is the whole reason cards piled up in the shade.
+   */
+  private static load(): void {
+    if (LiveView.loaded) {
+      return;
+    }
+    LiveView.loaded = true;
+    LiveView.id = Prefs.getNumber(Prefs.keys.liveViewId, 0);
+    LiveView.showing = Prefs.getBool(Prefs.keys.liveViewLive, false);
+  }
+
+  /** Drops the local record; the card is gone or beyond reach either way. */
+  private static forget(): void {
+    LiveView.showing = false;
+    LiveView.title = '';
+    LiveView.id = 0;
+    Prefs.putBool(Prefs.keys.liveViewLive, false);
+  }
+
+  /**
+   * Stops a card left behind by a process that died while it was showing.
+   * Called once at launch, before any new card can be started.
+   */
+  static async reap(): Promise<void> {
+    LiveView.load();
+    if (!LiveView.showing || LiveView.id === 0) {
+      return;
+    }
+    hilog.info(0x0000, TAG, 'reaping orphan live view id=%{public}d', LiveView.id);
+    if (await LiveView.isEnabled()) {
+      try {
+        await LiveView.stopCard();
+      } catch (e) {
+        hilog.warn(0x0000, TAG, 'reap: %{public}s', LiveView.describe(e));
+      }
+    }
+    LiveView.forget();
+  }
 
   /**
    * Public probe for Settings. Huawei grants 实况窗 per app, so without the
@@ -125,18 +177,23 @@ export class LiveView {
     detail: string,
     progress: number
   ): Promise<void> {
+    LiveView.load();
     if (!await LiveView.isEnabled()) {
       return;
     }
     LiveView.sessionId = sessionId;
     const switching = !LiveView.showing || LiveView.title !== sessionTitle;
     if (switching) {
-      // Clear any orphan first: a card left behind by a killed process still
-      // occupies its id, and starting over it fails.
+      // Clear the current card first: it still occupies its id, and starting
+      // over it fails.
       await LiveView.hide();
       LiveView.id = Date.now() % 2000000000;
       LiveView.sequence = 0;
       LiveView.sessionId = sessionId;
+      // Recorded *before* the start call, so a process that dies mid-start
+      // still leaves an id behind for the next launch to reap.
+      Prefs.putNumber(Prefs.keys.liveViewId, LiveView.id);
+      Prefs.putBool(Prefs.keys.liveViewLive, true);
     }
     try {
       const view = await LiveView.build(sessionTitle, detail, progress, 0);
@@ -153,22 +210,28 @@ export class LiveView {
   }
 
   static async hide(): Promise<void> {
-    if (!await LiveView.isEnabled() || LiveView.id === 0) {
+    LiveView.load();
+    if (!LiveView.showing || LiveView.id === 0) {
       return;
     }
-    try {
-      // `stopLiveView` needs a complete LiveView, and a sequence above whatever
-      // the orphan carries — which we cannot know, so use the upper bound.
-      const view = await LiveView.build(LiveView.title, '', PROGRESS_DONE, KEEP_DONE_S);
-      view.sequence = STOP_SEQUENCE;
-      LiveView.report('stop', await liveViewManager.stopLiveView(view));
-    } catch (e) {
-      hilog.warn(0x0000, TAG, 'hide: %{public}s', LiveView.describe(e));
-    } finally {
-      LiveView.showing = false;
-      LiveView.title = '';
-      LiveView.id = 0;
+    if (await LiveView.isEnabled()) {
+      try {
+        await LiveView.stopCard();
+      } catch (e) {
+        hilog.warn(0x0000, TAG, 'hide: %{public}s', LiveView.describe(e));
+      }
     }
+    // Cleared even when the stop failed: an id we cannot reach must not pin the
+    // flag, or every launch would reap a card that is already gone.
+    LiveView.forget();
+  }
+
+  /** Ends the current card. The id survives a restart, so this always reaches it. */
+  private static async stopCard(): Promise<void> {
+    const title = LiveView.title.length > 0 ? LiveView.title : FALLBACK_TITLE;
+    const view = await LiveView.build(title, '', PROGRESS_DONE, KEEP_DONE_S);
+    view.sequence = STOP_SEQUENCE;
+    LiveView.report('stop', await liveViewManager.stopLiveView(view));
   }
 
   private static async build(
@@ -178,11 +241,12 @@ export class LiveView {
     keepTime: number
   ): Promise<liveViewManager.LiveView> {
     LiveView.sequence += 1;
-    // Every line carries the same colour: the SDK rejects a payload where the
-    // lines disagree, so hierarchy has to come from the text itself.
+    // No `textColor`: the system default adapts to light and dark and stays
+    // legible on the card's glass. A fixed green did not, and the SDK rejects a
+    // payload whose lines disagree, so setting one meant setting all of them.
     const rich: Array<liveViewManager.RichText> = [];
-    rich.push({ text: LiveView.clip(sessionTitle, 60), textColor: ACCENT });
-    rich.push({ text: LiveView.clip(detail, 60), textColor: ACCENT });
+    rich.push({ text: LiveView.clip(sessionTitle, 60) });
+    rich.push({ text: LiveView.clip(detail, 60) });
 
     const capsule: liveViewManager.ProgressCapsule = {
       type: liveViewManager.CapsuleType.CAPSULE_TYPE_PROGRESS,
@@ -203,7 +267,7 @@ export class LiveView {
       indicatorType: liveViewManager.IndicatorType.INDICATOR_TYPE_UP,
       indicatorIcon: ICON_RUN,
       lineType: liveViewManager.LineType.LINE_TYPE_THICK_SOLID_LINE,
-      nodeIcons: [ICON_APP, ICON_RUN, ICON_RUN]
+      nodeIcons: [ICON_APP, ICON_RUN, ICON_DONE]
     };
 
     const primary: liveViewManager.PrimaryData = {};
@@ -212,6 +276,7 @@ export class LiveView {
     primary.keepTime = keepTime;
     primary.clickAction = await LiveView.tapAgent();
     primary.layoutData = layout;
+    primary.liveViewLockScreenPicture = LOCK_PICTURE;
 
     const data: liveViewManager.LiveViewData = { primary: primary };
     data.capsule = capsule;
@@ -221,6 +286,12 @@ export class LiveView {
       event: EVENT,
       sequence: LiveView.sequence,
       isMute: true,
+      // The default (STOP_BY_APP) lets the card outlive the process that made
+      // it. Its id only ever existed in that process, so once the process is
+      // gone nothing can stop it — which is exactly how cards piled up in the
+      // shade. This app owns the whole lifecycle, so the system should end the
+      // card along with the process.
+      lifeCycleMode: liveViewManager.LifeCycleMode.AUTO_STOP_WHEN_APP_TERMINATE,
       liveViewData: data
     };
     return view;
@@ -272,6 +343,12 @@ export class LiveView {
   }
 
   private static explain(code: number, message: string): string {
+    if (code === 1) {
+      // A `LiveViewResult.resultCode`, not a BusinessError code. Seen when
+      // stopping a card whose owning process is gone.
+      return '实况窗结束失败（1）：这张卡已不属于当前进程。'
+        + '根因是 lifeCycleMode 默认 STOP_BY_APP，卡片不随进程回收。';
+    }
     if (code === 1003500004) {
       return `实况窗未启用（${code}）：系统侧没开这个能力。`;
     }

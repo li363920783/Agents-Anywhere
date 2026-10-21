@@ -232,6 +232,7 @@ HarmonyOS 对后台应用的网络管控很硬：**退到后台约 2 秒后网�
 | `.blur()` 做了个硬边圆盘 | `blur` 模糊的是组件**内容**，纯背景形状不会变软 | 改用 `radialGradient` 衰减到全透明 |
 | 切换深/浅色后重启又变回去 | `preferences.flush()` 是异步的，`setColorMode()` 紧接着重启进程，写盘没落地 | `Prefs` 全部改用 `flushSync()` |
 | 卡片后面一片纯色，毛玻璃看不出效果 | 系统材质模糊的是背后的内容，背后是纯色时模糊≈没模糊 | 先铺环境光层（见 §11） |
+| 实况窗越开越多、不会自己关 | `lifeCycleMode` 默认 `STOP_BY_APP`：卡片**不随进程回收**，而它的 id 只存在于创建它的那个进程里 —— 进程一死就再也停不掉，于是每跑一次多一张 | 设 `AUTO_STOP_WHEN_APP_TERMINATE`；另用 Prefs 持久化 id，启动时 `reap()` 兜底（见 §12） |
 
 ---
 
@@ -357,3 +358,45 @@ HarmonyOS 对后台应用的网络管控很硬：**退到后台约 2 秒后网�
 
 **不要给列表卡片加背景模糊**：`backgroundBlurStyle` 逐卡片使用会让单帧从 8ms 涨到 18ms
 （官方性能案例）。毛玻璃只留在底部悬浮栏（系统材质）和顶部标题栏。
+
+---
+
+## 12. 实况窗
+
+`core/notify/LiveView.ets`，由 `DashboardWatcher` 驱动：有回合在跑就显示，跑完就 `hide()`。
+
+### 生命周期（最容易踩的坑）
+
+`LiveView.lifeCycleMode` 默认是 `STOP_BY_APP` —— **卡片不随应用进程结束**，必须显式
+`stopLiveView`。而卡片的 `id` 只存在于创建它的那个进程里（`Date.now() % 2000000000`），
+进程被系统杀掉之后，谁也不知道这个 id 了，于是那张卡**永远停不掉**。
+
+结果就是：应用每被杀一次、再起来，就多一张卡，堆在通知栏里。修法两条：
+
+1. `lifeCycleMode: AUTO_STOP_WHEN_APP_TERMINATE`（API 26）—— 卡片随进程回收。
+   这才是根治：本应用的创建/更新/结束全由设备侧自己控制，正合该模式的定义。
+2. `reap()` 兜底：把 `id` 和「有没有在显示」持久化到 Prefs，启动时先停掉上一次残留。
+   正常情况（1 已生效）它会报 `1003500009 liveView does not exist`，说明没有残留 —— 这是**正常**日志。
+
+> 装了修复之前产生的旧卡，id 已经无从得知，只能手动划掉一次。
+
+### 视觉
+
+| 项 | 值 |
+| --- | --- |
+| 进度条 / 胶囊 | 品牌蓝 `#FF007DFF`，跟应用强调色一致（之前是绿色，在玻璃卡上读不清） |
+| 正文颜色 | **不设** `textColor`，交给系统默认值 —— 它自己会跟随深浅色，固定色做不到 |
+| 胶囊图标 / 节点图标 | `lv_app.png` / `lv_run.png` / `lv_done.png`（白色字形 + 透明底） |
+| 锁屏沉浸大图 | `lv_backdrop.png`（1000×1000），`liveViewLockScreenPicture` 指定 |
+
+图标由 `tools/make-icons.py` 生成（Pillow 画 4 倍再降采样），别手改 PNG，改脚本重跑：
+
+```bash
+python3 tools/make-icons.py
+```
+
+### 动画
+
+实况窗没有任意动画 API。能动的只有系统自己渲染的那部分：进度条随 `progress` 前进、
+指示图标沿节点移动。所以「动画」= 按 `LiveView` 每 30s 推进一次 `progress`
+（`DashboardWatcher` 的 ticker；再快会撞 `1003500008` 频率限制）。

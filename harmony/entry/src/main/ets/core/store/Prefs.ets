@@ -14,6 +14,8 @@ interface PrefsKeys {
   notifyDone: string;
   notifyAsked: string;
   colorMode: string;
+  liveViewId: string;
+  liveViewLive: string;
 }
 
 /** App preferences: server URL, recent servers, appearance. */
@@ -33,7 +35,9 @@ export class Prefs {
     notifyApproval: 'notify_approval',
     notifyDone: 'notify_done',
     notifyAsked: 'notify_asked',
-    colorMode: 'color_mode'
+    colorMode: 'color_mode',
+    liveViewId: 'live_view_id',
+    liveViewLive: 'live_view_live'
   };
 
   static init(context: common.UIAbilityContext): void {
@@ -65,6 +69,23 @@ export class Prefs {
       return def;
     }
     return s.getSync(key, def) as boolean;
+  }
+
+  static getNumber(key: string, def: number): number {
+    const s = Prefs.store;
+    if (s === null) {
+      return def;
+    }
+    return s.getSync(key, def) as number;
+  }
+
+  static putNumber(key: string, value: number): void {
+    const s = Prefs.store;
+    if (s === null) {
+      return;
+    }
+    s.putSync(key, value);
+    s.flushSync();
   }
 
   static putBool(key: string, value: boolean): void {
