@@ -1133,7 +1133,7 @@ export struct SessionDetail {
     }
   }
 
-  private statusText(item: TimelineItem): string {
+  private statusText(item: TimelineItem): ResourceColor {
     return item.status === 'error' || item.status === 'failed' ? Theme.danger : Theme.faint;
   }
 

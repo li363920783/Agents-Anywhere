@@ -1,32 +1,37 @@
 /**
- * Design tokens for the HarmonyOS client.
+ * Design tokens for the HarmonyOS client, expressed as system resources.
  *
- * "Slate, desaturated": near-black blue-grey surfaces, low-emission text and a
- * single muted accent. Buttons are outlined by default; only the primary action
- * of a screen is filled. Every screen reads from here instead of hardcoding hex.
+ * Hex was a mistake here: a forced-dark palette fights every system surface.
+ * The tab bar, title bar and materials all follow the *system* theme, so on a
+ * light-mode device a hand-painted dark UI is framed by pale chrome — and a
+ * system material renders light underneath white labels.
+ *
+ * Reading `sys.color.*` means the app simply follows light/dark, and system
+ * materials blend instead of clashing.
  */
 export class Theme {
   // Surfaces
-  static readonly bg: string = '#0F1419';
-  static readonly surface: string = '#1A2129';
-  static readonly raised: string = '#222A33';
-  static readonly border: string = '#2A333D';
-  static readonly borderStrong: string = '#3A4552';
+  static readonly bg: Resource = $r('sys.color.ohos_id_color_background');
+  static readonly surface: Resource = $r('sys.color.ohos_id_color_sub_background');
+  static readonly raised: Resource = $r('sys.color.ohos_id_color_text_field_bg');
+  static readonly border: Resource = $r('sys.color.ohos_id_color_list_separator');
+  static readonly borderStrong: Resource = $r('sys.color.ohos_id_color_tertiary');
 
   // Text
-  static readonly text: string = '#E6EDF3';
-  static readonly muted: string = '#8B98A5';
-  static readonly faint: string = '#6B7684';
+  static readonly text: Resource = $r('sys.color.ohos_id_color_primary');
+  static readonly muted: Resource = $r('sys.color.ohos_id_color_secondary');
+  static readonly faint: Resource = $r('sys.color.ohos_id_color_tertiary');
 
   // Accents
-  static readonly accent: string = '#3FB950';
-  static readonly onAccent: string = '#0B1F10';
-  static readonly user: string = '#2C5A8C';
-  static readonly userText: string = '#E8F0FA';
-  static readonly danger: string = '#E5534B';
-  static readonly dangerSurface: string = '#2A1719';
-  static readonly warn: string = '#D29922';
-  static readonly code: string = '#79C0FF';
+  static readonly accent: Resource = $r('sys.color.ohos_id_color_emphasize');
+  /** Text/icons drawn on top of a filled accent surface. */
+  static readonly onAccent: Resource = $r('sys.color.ohos_id_color_foreground_contrary');
+  static readonly user: Resource = $r('sys.color.ohos_id_color_emphasize');
+  static readonly userText: Resource = $r('sys.color.ohos_id_color_foreground_contrary');
+  static readonly danger: Resource = $r('sys.color.ohos_id_color_alert');
+  static readonly dangerSurface: Resource = $r('sys.color.ohos_id_color_sub_background');
+  static readonly warn: Resource = $r('sys.color.ohos_id_color_warning');
+  static readonly code: Resource = $r('sys.color.ohos_id_color_emphasize');
 
   // Type scale
   static readonly fontTitle: number = 22;
@@ -42,12 +47,8 @@ export class Theme {
   static readonly spaceLg: number = 16;
   static readonly spaceXl: number = 24;
 
-  // Depth
-  /** One step above `raised`, for the top-most surface in a stack. */
-  static readonly elevated: string = '#2B343F';
-  /** Semi-transparent bar: content stays faintly visible as it scrolls under. */
-  static readonly barScrim: string = '#E612181E';
-  static readonly shadow: string = '#59000000';
+  // Depth — a shadow is the one thing the system has no token for.
+  static readonly shadow: string = '#33000000';
 
   // Shape
   static readonly gutter: string = '92%';

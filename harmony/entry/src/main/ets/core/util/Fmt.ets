@@ -52,12 +52,12 @@ export class Fmt {
     }
   }
 
-  static statusColor(status: string): string {
+  static statusColor(status: string): ResourceColor {
     switch (status) {
       case 'running':
       case 'pending':
       case 'waiting':
-        return '#FF9F0A';
+        return Theme.warn;
       case 'waiting_approval':
         return Theme.code;
       case 'error':
