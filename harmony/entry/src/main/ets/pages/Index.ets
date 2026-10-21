@@ -9,6 +9,7 @@ import { Workspace } from './Workspace';
 import { SessionDetailParam } from '../core/model/Nav';
 import { WorkspaceParam } from '../core/model/Workspace';
 import { Theme } from '../core/ui/Theme';
+import { Backdrop } from '../core/ui/Backdrop';
 import { uiMaterial } from '@kit.ArkUI';
 
 /** EntryAbility publishes a notification-tap target here. */
@@ -83,6 +84,10 @@ struct Index {
   build() {
     Navigation(this.rootStack) {
       Stack() {
+        // Ambient light behind every page. The tab pages paint no background of
+        // their own, so this shows through their gutters — and gives the
+        // floating bar's system material something to blur.
+        Backdrop()
         if (this.restoreDone && this.signedIn) {
           MainTabs()
         } else if (this.restoreDone) {
@@ -93,7 +98,7 @@ struct Index {
           }
           .width('100%')
           .height('100%')
-          .backgroundColor(Theme.bg)
+          .backgroundColor(Color.Transparent)
           .justifyContent(FlexAlign.Center)
         }
       }
@@ -111,12 +116,27 @@ struct Index {
 struct MainTabs {
   @Consume('rootStack') rootStack: NavPathStack;
   @State activeTab: number = 0;
+  /** Drives the active tab's breathing glow; see `aboutToAppear`. */
+  @State glow: number = 0.35;
   /** THIN is the documented style for navigation bars. */
   private barMaterial: uiMaterial.ImmersiveMaterial = new uiMaterial.ImmersiveMaterial({
     style: uiMaterial.ImmersiveStyle.THIN,
     interactive: true,
     lightEffect: { color: Color.White }
   });
+
+  aboutToAppear(): void {
+    // 呼吸光效: one infinite yoyo on a single opacity value. Only the active
+    // tab reads it, so this is one animated property for the whole bar.
+    animateTo({
+      duration: 1600,
+      curve: Curve.EaseInOut,
+      iterations: -1,
+      playMode: PlayMode.Alternate
+    }, () => {
+      this.glow = 1.0;
+    });
+  }
 
   build() {
     // Floating immersive bar: `barPosition` must be in the constructor, plus
@@ -156,11 +176,20 @@ struct MainTabs {
 
   @Builder
   TabItem(label: string, index: number) {
-    Column() {
+    Column({ space: 4 }) {
       Text(label)
         .fontSize(Theme.fontTiny)
         .fontWeight(this.activeTab === index ? FontWeight.Medium : FontWeight.Normal)
         .fontColor(this.activeTab === index ? Theme.accent : Theme.faint)
+      // Underline rather than a filled pill: a solid block inside the system
+      // material reads as a separate surface instead of part of the bar.
+      Row()
+        .width(16)
+        .height(3)
+        .borderRadius(2)
+        .backgroundColor(Theme.accent)
+        .shadow({ radius: 8, color: Theme.accent, offsetX: 0, offsetY: 0 })
+        .opacity(this.activeTab === index ? this.glow : 0)
     }
     .width('100%')
     .height(52)

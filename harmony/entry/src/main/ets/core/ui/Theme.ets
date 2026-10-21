@@ -52,6 +52,15 @@ export class Theme {
   // Depth — a shadow is the one thing the system has no token for.
   static readonly shadow: string = '#33000000';
 
+  // Glow (光晕). Also untokenised. The tint is the emphasize blue (#007DFF in
+  // both light and dark), so one set of values reads as a halo on either
+  // theme — a white or black hairline would only work in one.
+  static readonly halo: string = '#59007DFF';
+  static readonly haloSoft: string = '#26007DFF';
+  /** Ambient wash: centre alpha, then a fully transparent outer stop. */
+  static readonly haloWash: string = '#2E007DFF';
+  static readonly haloFade: string = '#00007DFF';
+
   // Shape
   static readonly gutter: string = '92%';
   static readonly radiusCard: number = 14;

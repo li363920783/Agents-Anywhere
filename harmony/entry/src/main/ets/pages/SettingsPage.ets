@@ -124,7 +124,9 @@ export struct SettingsPage {
       .width(Theme.gutter)
       .padding(16)
       .backgroundColor(Theme.surface)
+      .border({ width: 1, color: Theme.haloSoft })
       .borderRadius(Theme.radiusCard)
+      .shadow({ radius: 12, color: Theme.shadow, offsetX: 0, offsetY: 3 })
       .alignItems(HorizontalAlign.Start)
 
       Text('Appearance')
@@ -259,7 +261,9 @@ export struct SettingsPage {
       .width(Theme.gutter)
       .padding(16)
       .backgroundColor(Theme.surface)
+      .border({ width: 1, color: Theme.haloSoft })
       .borderRadius(Theme.radiusCard)
+      .shadow({ radius: 12, color: Theme.shadow, offsetX: 0, offsetY: 3 })
       .alignItems(HorizontalAlign.Start)
 
       Button('Sign out')
@@ -281,6 +285,7 @@ export struct SettingsPage {
     .width('100%')
     .height('100%')
     .padding({ bottom: Theme.barClearance })
-    .backgroundColor(Theme.bg)
+    // Transparent so the ambient light layer behind the tab shows through.
+    .backgroundColor(Color.Transparent)
   }
 }

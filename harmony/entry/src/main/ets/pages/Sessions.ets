@@ -203,6 +203,7 @@ export struct Sessions {
             .backgroundColor(Theme.accent)
             .padding({ left: 8, right: 8, top: 3, bottom: 3 })
             .borderRadius(Theme.radiusPill)
+            .shadow({ radius: 10, color: Theme.accent, offsetX: 0, offsetY: 0 })
             .maxLines(1)
         }
         Blank().layoutWeight(1)
@@ -310,7 +311,8 @@ export struct Sessions {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(Theme.bg)
+    // Transparent so the ambient light layer behind the tab shows through.
+    .backgroundColor(Color.Transparent)
   }
 
   @Builder
@@ -366,7 +368,7 @@ export struct Sessions {
     }
     .width('100%')
     .padding({ top: Theme.spaceLg, bottom: Theme.spaceSm })
-    .backgroundColor(Theme.bg)
+    .backgroundColor(Color.Transparent)
     .onClick(() => this.toggleGroup(name))
   }
 
@@ -393,7 +395,9 @@ export struct Sessions {
             .borderRadius(4)
         }
         if (item.unread) {
-          Circle({ width: 7, height: 7 }).fill(Theme.accent)
+          Circle({ width: 7, height: 7 })
+            .fill(Theme.accent)
+            .shadow({ radius: 6, color: Theme.accent, offsetX: 0, offsetY: 0 })
         }
       }
       .width('100%')
@@ -441,9 +445,11 @@ export struct Sessions {
       bottom: Theme.spaceMd
     })
     .backgroundColor(Theme.surface)
-    // Elevation instead of a hairline border: borders on every card made the
-    // list read as a table.
     .borderRadius(Theme.radiusCard)
+    // 光晕边框: an accent-tinted hairline reads as light catching the edge,
+    // which is why it no longer looks like the grey table outline that an
+    // opaque border produced on a flat background.
+    .border({ width: 1, color: Theme.haloSoft })
     .shadow({ radius: 12, color: Theme.shadow, offsetX: 0, offsetY: 3 })
     .alignItems(HorizontalAlign.Start)
     .onClick(() => {

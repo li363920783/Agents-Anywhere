@@ -56,7 +56,7 @@ export class Prefs {
       return;
     }
     s.putSync(key, value);
-    s.flush();
+    s.flushSync();
   }
 
   static getBool(key: string, def: boolean): boolean {
@@ -73,7 +73,7 @@ export class Prefs {
       return;
     }
     s.putSync(key, value);
-    s.flush();
+    s.flushSync();
   }
 
   static delete(key: string): void {
@@ -82,6 +82,6 @@ export class Prefs {
       return;
     }
     s.deleteSync(key);
-    s.flush();
+    s.flushSync();
   }
 }

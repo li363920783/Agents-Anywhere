@@ -126,8 +126,9 @@ export struct Devices {
               .width('100%')
               .padding({ left: 14, right: 14, top: 12, bottom: 12 })
               .backgroundColor(Theme.surface)
-              .border({ width: 1, color: Theme.border })
+              .border({ width: 1, color: Theme.haloSoft })
               .borderRadius(Theme.radiusCard)
+              .shadow({ radius: 12, color: Theme.shadow, offsetX: 0, offsetY: 3 })
               .alignItems(HorizontalAlign.Start)
             }
           }, (c: ConnectorView) => c.id)
@@ -145,6 +146,7 @@ export struct Devices {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(Theme.bg)
+    // Transparent so the ambient light layer behind the tab shows through.
+    .backgroundColor(Color.Transparent)
   }
 }

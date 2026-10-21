@@ -229,6 +229,9 @@ HarmonyOS 对后台应用的网络管控很硬：**退到后台约 2 秒后网�
 | 折叠不生效 | `ForEach` 只在 key 变化时才重跑分支 | key 拼上折叠状态 |
 | `@State tabIndex` 编译冲突 | 与 `CustomComponent` 内置成员同名 | 改名 `activeTab` |
 | 带类型的 catch 不可用 | ArkTS 不支持 catch 参数类型标注 | 用 `(e as Error).message` |
+| `.blur()` 做了个硬边圆盘 | `blur` 模糊的是组件**内容**，纯背景形状不会变软 | 改用 `radialGradient` 衰减到全透明 |
+| 切换深/浅色后重启又变回去 | `preferences.flush()` 是异步的，`setColorMode()` 紧接着重启进程，写盘没落地 | `Prefs` 全部改用 `flushSync()` |
+| 卡片后面一片纯色，毛玻璃看不出效果 | 系统材质模糊的是背后的内容，背后是纯色时模糊≈没模糊 | 先铺环境光层（见 §11） |
 
 ---
 
@@ -324,5 +327,33 @@ HarmonyOS 对后台应用的网络管控很硬：**退到后台约 2 秒后网�
 不报编译错）。已核对的可用图标：`folder`、`doc_plaintext`、`arrow_left`、`arrow_clockwise`、
 `plus`、`paperplane`、`gearshape`、`message`、`chevron_right`、`chevron_down`。
 
-设计语言另外两条：卡片用阴影抬升而不是描边（每张卡都描边会读成表格）；
-间距走 4pt 刻度（`Theme.spaceXs..Xl`），不再各写各的数字。
+设计语言另外两条：卡片用阴影抬升（描边是低透明度的**强调色**，不是灰色实线，
+所以不会读成表格）；间距走 4pt 刻度（`Theme.spaceXs..Xl`），不再各写各的数字。
+
+---
+
+## 11. 沉浸光感：环境光层 + 呼吸指示
+
+`core/ui/Backdrop.ets` 是全屏环境光层（`光效装饰层`），放在 `Index.ets` 根 `Stack` 最底层：
+
+- 两个 `radialGradient` 光晕（左上强调色、右下补光），**不用 `.blur()`**：
+  `blur` 模糊的是组件的*内容*，纯背景形状不会变软，圆形硬边会直接露出来。
+  径向渐变自带衰减，还省掉一次离屏渲染。
+- 它自己画 `Theme.bg` 底色，丢到哪都能用；三个 Tab 页的根容器因此改成
+  `Color.Transparent`，光晕才能从卡片缝隙里透出来。
+- **顺带解决了悬浮栏毛玻璃"看不出来"的问题**：系统材质模糊的是背后的东西，
+  背后是一片纯色时，模糊和没模糊长得一样。有了这层光晕，胶囊后面才有结构可模糊。
+
+另外三处：
+
+| 效果 | 落点 |
+| --- | --- |
+| 光晕边框 | 卡片 1px `Theme.haloSoft` 描边 |
+| 悬浮阴影 | 卡片 `Theme.shadow`；强调色元素（未读徽标、选中页签）用 `Theme.halo` 做零偏移光晕 |
+| 呼吸光效 | `MainTabs` 一个 `animateTo(iterations:-1, playMode:Alternate)` 驱动 `glow`，只有选中页签读它 |
+
+`Theme.halo*` 是**唯一**手挑的颜色（系统没有光晕 token）。色相取 `ohos_id_color_emphasize`
+的 `#007DFF`——浅色深色同值，所以一组值两边都成立；白/黑描边只有一边能用。
+
+**不要给列表卡片加背景模糊**：`backgroundBlurStyle` 逐卡片使用会让单帧从 8ms 涨到 18ms
+（官方性能案例）。毛玻璃只留在底部悬浮栏（系统材质）和顶部标题栏。
