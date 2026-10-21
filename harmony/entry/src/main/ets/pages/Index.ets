@@ -113,13 +113,12 @@ struct MainTabs {
   @Consume('rootStack') rootStack: NavPathStack;
   @State activeTab: number = 0;
   /**
-   * THIN is the documented choice for navigation bars. On a low-tier device
-   * (`getGlobalMaterialLevel()` returns 0 — which this phone does) `style` is
-   * ignored entirely and only `materialColor` / `applyShadow` / `interactive`
-   * apply, so the blur cannot be strengthened there.
+   * THIN is the documented choice for navigation bars. `getGlobalMaterialLevel()`
+   * returns 0 = `EXQUISITE`, i.e. this device is the top tier, so `style` does
+   * apply.
    */
   private barMaterial: uiMaterial.ImmersiveMaterial = new uiMaterial.ImmersiveMaterial({
-    style: uiMaterial.ImmersiveStyle.THIN,
+    style: uiMaterial.ImmersiveStyle.REGULAR,
     interactive: true,
     lightEffect: { color: Color.White }
   });
@@ -154,6 +153,11 @@ struct MainTabs {
     .barOverlap(true)
     .barFloatingStyle({
       barBottomMargin: 28,
+      // The floating style paints a gradient mask above the bar by default
+      // (#CCF1F3F5 in light mode). That scrim is what made the list look like
+      // it stopped short of the bar — drop it so rows stay visible underneath.
+      maskColor: Color.Transparent,
+      maskHeight: 0,
       systemMaterial: this.barMaterial
     })
     .onChange((index: number) => {

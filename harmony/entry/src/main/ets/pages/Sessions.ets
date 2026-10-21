@@ -66,7 +66,6 @@ export struct Sessions {
   @State deviceFilter: string = '';
   @State hideLogs: boolean = true;
   @State hiddenLogCount: number = 0;
-  @State refreshing: boolean = false;
   @State loading: boolean = true;
   @State query: string = '';
   /** Names of project sections the user collapsed. */
@@ -269,7 +268,7 @@ export struct Sessions {
         .layoutWeight(1)
       } else {
         Column() {
-          Refresh({ refreshing: $$this.refreshing }) {
+          Column() {
             List({ space: 10 }) {
               ForEach(this.groups, (group: ProjectGroup) => {
                 // The header is a plain ListItem rather than a ListItemGroup
@@ -299,12 +298,6 @@ export struct Sessions {
             .layoutWeight(1)
             .padding({ bottom: Theme.barClearance })
           }
-          .onRefreshing(() => {
-            // Data arrives by push, so a pull means "resync the socket".
-            DashboardWatcher.shared.reconnect();
-            void this.loadConnectors();
-            this.refreshing = false;
-          })
         }
         .layoutWeight(1)
       }
