@@ -30,6 +30,12 @@ export struct SessionDetail {
   @Consume('rootStack') rootStack: NavPathStack;
   private sessionId: string = '';
   @State session: SessionView | null = null;
+  /**
+   * Status pushed by `runtime.state.updated`. `session.status` only changes when
+   * the session meta is re-fetched, so without this the running indicator sat
+   * still until you left the page and came back. Empty means "no live value".
+   */
+  @State liveStatus: string = '';
   @State items: Array<TimelineItem> = [];
   @State notices: Array<Notice> = [];
   @State composer: string = '';
@@ -117,6 +123,9 @@ export struct SessionDetail {
         ? Snapshot.fromJson(Demo.snapshot())
         : Snapshot.fromJson(await ApiClient.shared.get(`/sessions/${this.sessionId}/snapshot?limit=200`));
       this.session = snap.session;
+      // The snapshot carries the authoritative status, so drop the live overlay
+      // until the stream tells us something newer.
+      this.liveStatus = '';
       this.items = snap.timeline;
       this.notices = snap.notices;
       this.takeover = snap.session.takeover;
@@ -500,12 +509,28 @@ export struct SessionDetail {
         }
         break;
       }
+      case 'runtime.state.updated': {
+        const state = Json.obj(payload, 'state');
+        const status = state === null ? null : Json.str(state, 'status');
+        if (status !== null && status.length > 0) {
+          this.liveStatus = status;
+        }
+        break;
+      }
       case 'session.refetch_required':
         void this.load();
         break;
       default:
         break;
     }
+  }
+
+  /** Live status wins over the one baked into the last snapshot. */
+  private currentStatus(): string {
+    if (this.liveStatus.length > 0) {
+      return this.liveStatus;
+    }
+    return this.session?.status ?? '';
   }
 
   private mergeItem(item: TimelineItem): void {
@@ -572,7 +597,7 @@ export struct SessionDetail {
       // enabled"). Without takeover the message still queues for the next turn,
       // which is what `/messages` already does — so this is a routing choice,
       // not a gate.
-      const steering = this.takeover && Fmt.statusLive(this.session?.status ?? '');
+      const steering = this.takeover && Fmt.statusLive(this.currentStatus());
       const endpoint = steering ? 'steer' : 'messages';
       await ApiClient.shared.post(`/sessions/${this.sessionId}/runtime/${endpoint}`, sendBody);
       this.pendingParts = [];
@@ -717,13 +742,13 @@ export struct SessionDetail {
 
       Row({ space: 8 }) {
         StatusDot({
-          color: Fmt.statusColor(this.session?.status ?? ''),
-          pulse: Fmt.statusLive(this.session?.status ?? ''),
+          color: Fmt.statusColor(this.currentStatus()),
+          pulse: Fmt.statusLive(this.currentStatus()),
           diameter: 8
         })
         StatusChip({
-          label: Fmt.statusLabel(this.session?.status ?? ''),
-          color: Fmt.statusColor(this.session?.status ?? '')
+          label: Fmt.statusLabel(this.currentStatus()),
+          color: Fmt.statusColor(this.currentStatus())
         })
         Blank().layoutWeight(1)
         Text('重命名')
@@ -860,14 +885,14 @@ export struct SessionDetail {
 
       // Without this the page looks identical whether the agent is working or
       // idle — the only cue was a word in the header.
-      if (Fmt.statusLive(this.session?.status ?? '')) {
+      if (Fmt.statusLive(this.currentStatus())) {
         Row({ space: 7 }) {
           StatusDot({
-            color: Fmt.statusColor(this.session?.status ?? ''),
+            color: Fmt.statusColor(this.currentStatus()),
             pulse: true,
             diameter: 8
           })
-          Text(`Agent 正在运行 · ${Fmt.statusLabel(this.session?.status ?? '')}`)
+          Text(`Agent 正在运行 · ${Fmt.statusLabel(this.currentStatus())}`)
             .fontSize(Theme.fontTiny)
             .fontColor(Theme.muted)
           Blank().layoutWeight(1)

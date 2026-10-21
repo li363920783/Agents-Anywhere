@@ -34,6 +34,8 @@ export class CreateAndStartRequest {
   connectorId: string = '';
   projectId: string = '';
   runtime: string = '';
+  /** Instance id; `runtime` alone only names the type. */
+  runtimeId: string = '';
   content: string = '';
 }
 

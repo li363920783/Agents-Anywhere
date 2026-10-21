@@ -7,6 +7,12 @@ export class SessionView {
   id: string = '';
   title: string | null = null;
   runtime: string = 'unknown';
+  /**
+   * The runtime *instance* on the connector. `runtime` above is only the type,
+   * and a connector can host several instances of one type, so anything that
+   * addresses a runtime (create, start, catalog) has to send this instead.
+   */
+  runtimeId: string = '';
   connectorId: string = '';
   connectorStatus: string = 'offline';
   cwd: string | null = null;
@@ -28,6 +34,7 @@ export class SessionView {
     s.id = Json.strOr(o, 'id', '');
     s.title = Json.str(o, 'title');
     s.runtime = Json.strOr(o, 'runtime', 'unknown');
+    s.runtimeId = Json.strOr(o, 'runtimeId', s.runtime);
     s.connectorId = Json.strOr(o, 'connectorId', '');
     s.connectorStatus = Json.strOr(o, 'connectorStatus', 'offline');
     s.cwd = Json.str(o, 'cwd');

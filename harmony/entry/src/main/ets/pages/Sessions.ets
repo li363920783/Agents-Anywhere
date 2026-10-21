@@ -91,6 +91,7 @@ export struct Sessions {
   @State newConnectorId: string = '';
   @State newProjectId: string = '';
   @State newRuntime: string = '';
+  @State newRuntimeId: string = '';
   @State newDraft: string = '';
   private revealTimer: number = -1;
 
@@ -295,6 +296,7 @@ export struct Sessions {
     this.newConnectorId = seed.connectorId;
     this.newProjectId = seed.projectId ?? '';
     this.newRuntime = seed.runtime;
+    this.newRuntimeId = seed.runtimeId;
     this.newDraft = '';
     this.composing = true;
   }
@@ -310,6 +312,7 @@ export struct Sessions {
       body.connectorId = this.newConnectorId;
       body.projectId = this.newProjectId;
       body.runtime = this.newRuntime;
+      body.runtimeId = this.newRuntimeId;
       body.content = content;
       const res = await ApiClient.shared.post('/sessions/create-and-start', body);
       const created = SessionView.fromJson(Json.obj(res, 'session'));
@@ -381,10 +384,6 @@ export struct Sessions {
       }
       .width(Theme.gutter)
       .padding({ top: 12, bottom: 10 })
-
-      if (this.composing) {
-        this.Composer()
-      }
 
       TextInput({ placeholder: 'Search sessions, worktrees, projects…', text: this.query })
         .height(40)
@@ -468,7 +467,13 @@ export struct Sessions {
                   // why rows sat on a stale status.
                   `${item.id}-${item.updatedSeq}-${item.status}-${item.connectorStatus}-${item.pinned}-${item.archived}-${item.unread}`)
                 }
-              }, (group: ProjectGroup) => `${group.name}-${this.isCollapsed(group.name) ? 1 : 0}`)
+              }, (group: ProjectGroup) =>
+              // The rows inside a group are rebuilt from the filters, but ArkUI
+              // only re-evaluates a ForEach branch when its key changes. Keyed
+              // on the name alone, a filter that kept the group and dropped its
+              // rows (全部 → 运行中) matched the old key and left the stale rows
+              // on screen — the group that appeared to ignore the tap.
+              `${group.name}-${this.isCollapsed(group.name) ? 1 : 0}-${this.statusFilter}-${this.deviceFilter}-${this.query}-${group.items.length}`)
 
               // Bottom clearance as a real list item rather than List padding:
               // a bottom inset makes ArkUI stop painting the list ~320px early,
@@ -488,6 +493,25 @@ export struct Sessions {
     .height('100%')
     // Transparent so the ambient light layer behind the tab shows through.
     .backgroundColor(Color.Transparent)
+    // A sheet rather than an inline block: the composer is a modal action, and
+    // at the top of the page it was under the status bar with the keyboard
+    // covering the list. The sheet sits above the keyboard and is reachable.
+    .bindSheet($$this.composing, this.ComposerSheet(), {
+      // A fixed height, not SheetSize.FIT_CONTENT: the content asks for
+      // width('100%'), and sizing the sheet *from* that content is circular —
+      // it collapsed to a zero-width strip pinned to the right edge.
+      height: 300,
+      dragBar: true,
+      // The sheet has its own 取消; the system X sat on top of it.
+      showClose: false,
+      backgroundColor: Theme.surface,
+      // Without this the sheet stays put and the keyboard covers the submit
+      // button — the exact complaint that moved the composer down here.
+      keyboardAvoidMode: SheetKeyboardAvoidMode.TRANSLATE_AND_RESIZE,
+      onDisappear: () => {
+        this.composing = false;
+      }
+    })
   }
 
   /**
@@ -552,63 +576,70 @@ export struct Sessions {
    * project has to stay visible, and it keeps the whole flow on one screen.
    */
   @Builder
-  Composer() {
-    Column({ space: 10 }) {
-      Row({ space: 8 }) {
-        Text(`在 ${this.newGroupName} 新建会话`)
-          .fontSize(Theme.fontTiny)
-          .fontColor(Theme.muted)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .layoutWeight(1)
-        Text('取消')
-          .fontSize(Theme.fontTiny)
-          .fontColor(Theme.muted)
-          .onClick(() => {
-            this.composing = false;
-          })
-      }
-      .width('100%')
+  ComposerSheet() {
+    Column({ space: 14 }) {
+      // The submit button lives in the header, deliberately. A footer button is
+      // covered by the keyboard on this device (the sheet did not resize for
+      // it), and the one action the user came here for must never be hidden.
+      Row({ space: 12 }) {
+        Column({ space: 2 }) {
+          Text('新建会话')
+            .fontSize(Theme.fontHeading)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(Theme.text)
+          Text(`${this.newGroupName} · ${this.newRuntime}`)
+            .fontSize(Theme.fontBody)
+            .fontColor(Theme.muted)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
 
-      TextArea({ placeholder: '第一条消息…', text: this.newDraft })
-        .height(70)
-        .fontSize(Theme.fontSmall)
-        .backgroundColor(Theme.bg)
-        .fontColor(Theme.text)
-        .caretColor(Theme.accent)
-        .placeholderColor(Theme.faint)
-        .borderRadius(10)
-        .onChange((v: string) => {
-          this.newDraft = v;
-        })
-
-      Row({ space: 8 }) {
-        Text(`${this.newRuntime} · ${this.newConnectorId}`)
-          .fontSize(Theme.fontTiny)
-          .fontColor(Theme.faint)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .layoutWeight(1)
         Button(this.creating ? '创建中…' : '创建并发送')
-          .height(34)
-          .fontSize(Theme.fontTiny)
+          .height(40)
+          .fontSize(Theme.fontBody)
+          .fontWeight(FontWeight.Medium)
+          .padding({ left: 16, right: 16 })
           .enabled(!this.creating && this.newDraft.trim().length > 0)
           .backgroundColor(Theme.accent)
           .fontColor(Theme.onAccent)
-          .borderRadius(Theme.radiusPill)
+          .borderRadius(20)
           .opacity(!this.creating && this.newDraft.trim().length > 0 ? 1 : 0.4)
           .onClick(() => {
             void this.createAndStart();
           })
       }
       .width('100%')
+
+      TextArea({ placeholder: '第一条消息…', text: this.newDraft })
+        .height(110)
+        .fontSize(Theme.fontHeading)
+        .backgroundColor(Theme.bg)
+        .fontColor(Theme.text)
+        .caretColor(Theme.accent)
+        .placeholderColor(Theme.faint)
+        .borderRadius(12)
+        .onChange((v: string) => {
+          this.newDraft = v;
+        })
+
+      Row() {
+        Blank()
+        Text('取消')
+          .fontSize(Theme.fontBody)
+          .fontColor(Theme.muted)
+          .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+          .onClick(() => {
+            this.composing = false;
+          })
+      }
+      .width('100%')
     }
-    .width(Theme.gutter)
-    .padding(14)
-    .backgroundColor(Theme.surface)
-    .borderRadius(Theme.radiusCard)
-    .border({ width: 1, color: Theme.haloSoft })
-    .shadow({ radius: 12, color: Theme.shadow, offsetX: 0, offsetY: 3 })
+    .width('100%')
+    // Numeric padding, not Theme.gutter: that token is a percentage ('92%'),
+    // which is a container *width*, and as padding it eats 92% on each side.
+    .padding({ left: 20, right: 20, top: 4, bottom: 16 })
     .alignItems(HorizontalAlign.Start)
   }
 
@@ -665,31 +696,37 @@ export struct Sessions {
   GroupHeader(group: ProjectGroup, collapsed: boolean) {
     Row({ space: 8 }) {
       SymbolGlyph($r('sys.symbol.chevron_right'))
-        .fontSize(13)
+        .fontSize(14)
         .fontColor([Theme.muted])
         .rotate({ angle: collapsed ? 0 : 90 })
-        .width(14)
+        .width(16)
       Text(group.name)
-        .fontSize(Theme.fontTiny)
+        .fontSize(Theme.fontSmall)
         .fontColor(Theme.muted)
         .fontFamily('monospace')
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
       Text(`${group.items.length}`)
-        .fontSize(Theme.fontTiny)
+        .fontSize(Theme.fontSmall)
         .fontColor(Theme.faint)
       // Its own tap target, so starting a session does not also toggle the
-      // group. Plain ASCII '+': the full-width '＋' is missing from the system
-      // font and renders as nothing at all.
+      // group. 44 vp is the minimum comfortable touch target; at padding-only
+      // sizing this was a ~20vp sliver that was hard to hit. Plain ASCII '+':
+      // the full-width '＋' is missing from the system font and renders as
+      // nothing at all.
       Text('+')
-        .fontSize(Theme.fontHeading)
+        .fontSize(Theme.fontTitle)
         .fontColor(Theme.accent)
-        .padding({ left: 10, right: 4 })
+        .textAlign(TextAlign.Center)
+        .width(44)
+        .height(44)
+        .borderRadius(22)
+        .backgroundColor(Theme.accentTint)
         .onClick(() => this.startCompose(group))
     }
     .width('100%')
-    .padding({ top: Theme.spaceLg, bottom: Theme.spaceSm })
+    .padding({ top: Theme.spaceSm, bottom: Theme.spaceSm })
     .backgroundColor(Color.Transparent)
     .onClick(() => this.toggleGroup(group.name))
   }
