@@ -11,6 +11,9 @@ import { Snapshot, TimelineItem, SessionView, Notice, NoticeAction, ToolContent,
 import { EmptyBody, AttachmentRef, FileReadRequest, MessageSendRequest, NoticeRespondRequest, SelectionPatchRequest } from '../core/model/Bodies';
 import { ModelCatalog, ModelItem, PermissionCatalog, PermissionItem, TextFile } from '../core/model/Catalog';
 import { picker, fileIo } from '@kit.CoreFileKit';
+import cameraPicker from '@ohos.multimedia.cameraPicker';
+import { camera } from '@kit.CameraKit';
+import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import { MarkdownView } from '../ui/MarkdownView';
 import { Theme } from '../core/ui/Theme';
 
@@ -49,6 +52,9 @@ export struct SessionDetail {
   @State previewError: string = '';
   @State pendingParts: Array<UploadPart> = [];
   @State pendingCount: number = 0;
+  /** Tool-call ids the user opened. Collapsed by default: most shell/read calls
+   *  are noise until you actually want to read them. */
+  @State expandedTools: Array<string> = [];
   private stream: RealtimeStream | null = null;
   private scroller: Scroller = new Scroller();
 
@@ -261,6 +267,52 @@ export struct SessionDetail {
     }
   }
 
+  /** Reads a picked uri into memory and queues it for the next send. */
+  private addAttachment(uri: string, mediaType: string, name: string): void {
+    const file = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);
+    const stat = fileIo.statSync(file.fd);
+    const buffer = new ArrayBuffer(stat.size);
+    fileIo.readSync(file.fd, buffer);
+    fileIo.closeSync(file);
+    this.pendingParts.push(new UploadPart(name, mediaType, buffer));
+    this.pendingCount = this.pendingParts.length;
+  }
+
+  private async capturePhoto(): Promise<void> {
+    try {
+      const profile: cameraPicker.PickerProfile = {
+        cameraPosition: camera.CameraPosition.CAMERA_POSITION_BACK,
+        saveUri: '',
+        videoDuration: 0
+      };
+      const result = await cameraPicker.pick(
+        getContext(this),
+        [cameraPicker.PickerMediaType.PHOTO],
+        profile
+      );
+      if (result.resultCode !== 0 || result.resultUri.length === 0) {
+        return;
+      }
+      this.addAttachment(result.resultUri, 'image/jpeg', `photo-${Date.now()}.jpg`);
+    } catch (e) {
+      this.toast('Camera unavailable');
+    }
+  }
+
+  private async pickPhotos(): Promise<void> {
+    try {
+      const options = new photoAccessHelper.PhotoSelectOptions();
+      options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
+      options.maxSelectNumber = 5;
+      const result = await new photoAccessHelper.PhotoViewPicker().select(options);
+      for (let i = 0; i < result.photoUris.length; i++) {
+        this.addAttachment(result.photoUris[i], 'image/jpeg', `photo-${Date.now()}-${i}.jpg`);
+      }
+    } catch (e) {
+      this.toast('Pick failed');
+    }
+  }
+
   private async pickAttachments(): Promise<void> {
     try {
       const options = new picker.DocumentSelectOptions();
@@ -269,16 +321,10 @@ export struct SessionDetail {
       const uris = await documentPicker.select(options);
       for (let i = 0; i < uris.length; i++) {
         const uri = uris[i];
-        const file = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);
-        const stat = fileIo.statSync(file.fd);
-        const buffer = new ArrayBuffer(stat.size);
-        fileIo.readSync(file.fd, buffer);
-        fileIo.closeSync(file);
         const slash = uri.lastIndexOf('/');
         const name = slash >= 0 ? uri.substring(slash + 1) : 'attachment';
-        this.pendingParts.push(new UploadPart(name, 'application/octet-stream', buffer));
+        this.addAttachment(uri, 'application/octet-stream', name);
       }
-      this.pendingCount = this.pendingParts.length;
     } catch (e) {
       this.toast('Pick failed');
     }
@@ -648,7 +694,26 @@ export struct SessionDetail {
           .backgroundColor(Theme.raised)
           .fontColor(Theme.text)
           .borderRadius(Theme.radiusPill)
-          .onClick(() => { void this.pickAttachments(); })
+          .bindMenu([
+            {
+              value: '拍照',
+              action: () => {
+                void this.capturePhoto();
+              }
+            },
+            {
+              value: '从相册选择',
+              action: () => {
+                void this.pickPhotos();
+              }
+            },
+            {
+              value: '选择文件',
+              action: () => {
+                void this.pickAttachments();
+              }
+            }
+          ])
         TextArea({ placeholder: this.takeover ? 'Send a command…' : 'Send a message…', text: this.composer })
           .height(42)
           .layoutWeight(1)
@@ -772,6 +837,40 @@ export struct SessionDetail {
     return item.type === 'system' && Json.strOr(item.content, 'kind', '') === 'reasoning';
   }
 
+  private isToolExpanded(id: string): boolean {
+    return this.expandedTools.indexOf(id) >= 0;
+  }
+
+  private toggleTool(id: string): void {
+    const next: Array<string> = [];
+    let removed = false;
+    for (let i = 0; i < this.expandedTools.length; i++) {
+      if (this.expandedTools[i] === id) {
+        removed = true;
+        continue;
+      }
+      next.push(this.expandedTools[i]);
+    }
+    if (!removed) {
+      next.push(id);
+    }
+    this.expandedTools = next;
+  }
+
+  /** One-line gist for a collapsed tool call: the command, or the target path. */
+  private toolSummary(item: TimelineItem): string {
+    const input = Json.obj(item.content, 'input');
+    const command = Json.str(input, 'command');
+    if (command !== null && command.trim().length > 0) {
+      return command.replace(/\s+/g, ' ').trim();
+    }
+    const path = Json.str(input, 'file_path') ?? Json.str(input, 'path');
+    if (path !== null && path.length > 0) {
+      return path;
+    }
+    return ToolContent.inputText(item.content).replace(/\s+/g, ' ').trim();
+  }
+
   @Builder
   TimelineRow(item: TimelineItem) {
     if (this.isReasoning(item)) {
@@ -845,36 +944,52 @@ export struct SessionDetail {
           Text(item.status)
             .fontSize(Theme.fontTiny)
             .fontColor(this.statusText(item))
+          Row()
+            .width(7)
+            .height(7)
+            .border({ width: { bottom: 1.5, right: 1.5 }, color: Theme.muted })
+            .rotate({ angle: this.isToolExpanded(item.id) ? 45 : -45 })
         }
         .width('100%')
 
-        if (ToolContent.inputText(item.content).length > 0) {
-          Text(ToolContent.inputText(item.content))
+        if (this.isToolExpanded(item.id)) {
+          if (ToolContent.inputText(item.content).length > 0) {
+            Text(ToolContent.inputText(item.content))
+              .fontSize(Theme.fontTiny)
+              .lineHeight(17)
+              .fontColor(Theme.muted)
+              .fontFamily('monospace')
+              .maxLines(24)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .wordBreak(WordBreak.BREAK_ALL)
+              .width('100%')
+              .padding(8)
+              .backgroundColor(Theme.bg)
+              .borderRadius(8)
+          }
+          if (item.status === 'done' && ToolContent.outputText(item.content).length > 0) {
+            Text(ToolContent.outputText(item.content))
+              .fontSize(Theme.fontTiny)
+              .lineHeight(17)
+              .fontColor(Theme.faint)
+              .fontFamily('monospace')
+              .maxLines(40)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .wordBreak(WordBreak.BREAK_ALL)
+              .width('100%')
+              .padding(8)
+              .backgroundColor(Theme.bg)
+              .borderRadius(8)
+          }
+        } else {
+          Text(this.toolSummary(item).length > 0 ? this.toolSummary(item) : 'Tap to expand')
             .fontSize(Theme.fontTiny)
-            .lineHeight(17)
             .fontColor(Theme.muted)
             .fontFamily('monospace')
-            .maxLines(5)
+            .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .wordBreak(WordBreak.BREAK_ALL)
             .width('100%')
-            .padding(8)
-            .backgroundColor(Theme.bg)
-            .borderRadius(8)
-        }
-        if (item.status === 'done' && ToolContent.outputText(item.content).length > 0) {
-          Text(ToolContent.outputText(item.content))
-            .fontSize(Theme.fontTiny)
-            .lineHeight(17)
-            .fontColor(Theme.faint)
-            .fontFamily('monospace')
-            .maxLines(8)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .wordBreak(WordBreak.BREAK_ALL)
-            .width('100%')
-            .padding(8)
-            .backgroundColor(Theme.bg)
-            .borderRadius(8)
         }
       }
       .padding(12)
@@ -883,6 +998,7 @@ export struct SessionDetail {
       .borderRadius(Theme.radiusCard)
       .width('100%')
       .alignItems(HorizontalAlign.Start)
+      .onClick(() => this.toggleTool(item.id))
     } else if (item.type === 'file_change') {
       Column({ space: 6 }) {
         Text(`${FileChangeContent.action(item.content)} ${FileChangeContent.path(item.content)}`.trim() || 'File change')

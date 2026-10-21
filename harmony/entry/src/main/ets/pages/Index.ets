@@ -50,14 +50,17 @@ struct Index {
       NavDestination() {
         SessionDetail({ sessionId: (param as SessionDetailParam).id })
       }
+      .backgroundColor(Theme.bg)
     } else if (name === 'Devices') {
       NavDestination() {
         Devices()
       }
+      .backgroundColor(Theme.bg)
     } else if (name === 'SettingsPage') {
       NavDestination() {
         SettingsPage()
       }
+      .backgroundColor(Theme.bg)
     }
   }
 

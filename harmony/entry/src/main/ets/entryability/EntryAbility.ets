@@ -6,6 +6,7 @@ import { Prefs } from '../core/store/Prefs';
 import { KeepAlive } from '../core/notify/KeepAlive';
 import { DashboardWatcher } from '../core/net/DashboardWatcher';
 import { Notifier, WANT_SESSION_KEY } from '../core/notify/Notifier';
+import { Theme } from '../core/ui/Theme';
 
 /** AppStorage key the Index page watches to open a session from a notification tap. */
 export const OPEN_SESSION_KEY = 'aa_open_session';
@@ -44,6 +45,31 @@ export default class EntryAbility extends UIAbility {
         hilog.error(0x0000, 'AgentsAnywhere', 'loadContent failed: %{public}s', err.message);
       }
     });
+    this.styleSystemBars(windowStage);
+  }
+
+  /**
+   * Without this the status and navigation bars keep their default light
+   * background, which reads as two white bands above and below a dark app.
+   */
+  private styleSystemBars(windowStage: window.WindowStage): void {
+    try {
+      const win = windowStage.getMainWindowSync();
+      // Paints any region the page hierarchy does not cover (NavDestination
+      // title bars, transition gaps) so it never shows as a white band.
+      win.setWindowBackgroundColor(Theme.bg);
+      const props: window.SystemBarProperties = {
+        statusBarColor: Theme.bg,
+        statusBarContentColor: Theme.text,
+        navigationBarColor: Theme.bg,
+        navigationBarContentColor: Theme.text
+      };
+      win.setWindowSystemBarProperties(props).catch((e: Error) => {
+        hilog.warn(0x0000, 'AgentsAnywhere', 'system bars: %{public}s', e.message);
+      });
+    } catch (e) {
+      hilog.warn(0x0000, 'AgentsAnywhere', 'mainWindow: %{public}s', (e as Error).message);
+    }
   }
 
   onDestroy(): void {
