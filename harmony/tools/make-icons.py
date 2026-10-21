@@ -13,6 +13,8 @@ Everything is drawn at 4x and downsampled, because Pillow has no antialiasing.
 """
 
 from PIL import Image, ImageDraw
+import os
+import sys
 
 SS = 4  # supersample factor
 
@@ -175,6 +177,16 @@ def lock_backdrop(size=1000):
     return base.convert("RGB")
 
 
+def store_icons(out_dir):
+    """Listing icons for AppGallery. 216 is the size the store asks for; 1024 is
+    the master to keep for later. Drawn natively at each size rather than
+    resampled, so the strokes stay crisp."""
+    os.makedirs(out_dir, exist_ok=True)
+    for n in (216, 512, 1024):
+        app_icon(n).save(os.path.join(out_dir, f"app_icon-{n}.png"))
+        print(f"  app_icon-{n}.png")
+
+
 def main():
     app_icon(512).save("AppScope/resources/base/media/app_icon.png")
     app_icon(512).save("entry/src/main/resources/base/media/icon.png")
@@ -185,7 +197,11 @@ def main():
     check_glyph(60).save("entry/src/main/resources/rawfile/lv_done.png")
     read_glyph(60).save("entry/src/main/resources/rawfile/lv_read.png")
     lock_backdrop(1000).save("entry/src/main/resources/rawfile/lv_backdrop.png")
-    print("icons written")
+    print("in-app icons written")
+
+    # Optional: also emit the store listing sizes into a directory.
+    if len(sys.argv) > 1:
+        store_icons(sys.argv[1])
 
 
 if __name__ == "__main__":

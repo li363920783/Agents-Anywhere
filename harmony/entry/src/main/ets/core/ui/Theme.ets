@@ -61,6 +61,26 @@ export class Theme {
   static readonly haloWash: string = '#2E007DFF';
   static readonly haloFade: string = '#00007DFF';
 
+  /**
+   * Status hues. The system palette has no success token — only `warning` and
+   * `alert`, which both read as red — so these are hand-picked like the halo.
+   * All mid-tone and saturated, so one value reads on light and on dark.
+   */
+  static readonly ok: string = '#FF2FB344';
+  static readonly busy: string = '#FF007DFF';
+  static readonly waiting: string = '#FFFF9F0A';
+  static readonly stalled: string = '#FF8B5CF6';
+  static readonly bad: string = '#FFFF3B30';
+  static readonly neutral: string = '#FF8A8A8E';
+  /** Idle gets its own muted slate, not `neutral`: most sessions are idle, and
+   *  a list of grey chips is what "monotone" looked like. */
+  static readonly idle: string = '#FF6E8CB8';
+
+  /** 12% tint of a `#AARRGGBB` colour, for chip backgrounds. */
+  static tint(color: string): string {
+    return `#1F${color.substring(3)}`;
+  }
+
   // Shape
   static readonly gutter: string = '92%';
   static readonly radiusCard: number = 14;

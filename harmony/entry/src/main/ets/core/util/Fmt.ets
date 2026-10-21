@@ -52,22 +52,37 @@ export class Fmt {
     }
   }
 
-  static statusColor(status: string): ResourceColor {
+  /**
+   * Chip colour for a session status. Distinct hues rather than one accent:
+   * scanning a long list, the colour has to say which session wants attention
+   * before the label is read.
+   */
+  static statusColor(status: string): string {
     switch (status) {
       case 'running':
+        return Theme.busy;
       case 'pending':
+      case 'stopping':
+        return Theme.stalled;
       case 'waiting':
-        return Theme.warn;
       case 'waiting_approval':
-        return Theme.code;
+        return Theme.waiting;
       case 'error':
-        return Theme.danger;
       case 'blocked':
-        return Theme.danger;
+        return Theme.bad;
       case 'idle':
-        return Theme.faint;
+        return Theme.idle;
       default:
-        return Theme.faint;
+        return Theme.neutral;
     }
+  }
+
+  /** True while the state is still changing, so the dot pulses. */
+  static statusLive(status: string): boolean {
+    return status === 'running' || status === 'pending' || status === 'waiting_approval';
+  }
+
+  static linkColor(online: boolean): string {
+    return online ? Theme.ok : Theme.neutral;
   }
 }

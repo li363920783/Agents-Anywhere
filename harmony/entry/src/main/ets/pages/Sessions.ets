@@ -8,6 +8,7 @@ import { SessionView } from '../core/model/Session';
 import { SessionMetaPatch } from '../core/model/Bodies';
 import { ConnectorListResponse, ConnectorView } from '../core/model/Connector';
 import { Theme } from '../core/ui/Theme';
+import { StatusChip, StatusDot } from '../core/ui/Status';
 
 /** One project section in the session list. */
 class ProjectGroup {
@@ -464,8 +465,12 @@ export struct Sessions {
   SessionRow(item: SessionView, project: string, index: number) {
     Column({ space: 8 }) {
       Row({ space: 8 }) {
-        Circle({ width: 7, height: 7 })
-          .fill(Fmt.statusColor(item.status))
+        // Colour per state, and a pulse while that state is still changing.
+        StatusDot({
+          color: Fmt.statusColor(item.status),
+          pulse: Fmt.statusLive(item.status),
+          diameter: 7
+        })
           .margin({ top: 6 })
         Text(item.title ?? item.cwd ?? '(' + item.runtime + ' session)')
           .fontSize(Theme.fontBody)
@@ -511,17 +516,19 @@ export struct Sessions {
       .width('100%')
 
       Row({ space: 6 }) {
+        // Runtime stays plain text: it is a label, not a state, and chipping it
+        // too left three grey pills on a card whose status was idle.
         Text(item.runtime)
           .fontSize(Theme.fontTiny)
           .fontColor(Theme.faint)
-        Text('·').fontSize(Theme.fontTiny).fontColor(Theme.borderStrong)
-        Text(item.connectorStatus === 'online' ? 'online' : 'offline')
-          .fontSize(Theme.fontTiny)
-          .fontColor(item.connectorStatus === 'online' ? Theme.accent : Theme.faint)
-        Text('·').fontSize(Theme.fontTiny).fontColor(Theme.borderStrong)
-        Text(Fmt.statusLabel(item.status))
-          .fontSize(Theme.fontTiny)
-          .fontColor(Fmt.statusColor(item.status))
+        StatusChip({
+          label: item.connectorStatus === 'online' ? 'online' : 'offline',
+          color: Fmt.linkColor(item.connectorStatus === 'online')
+        })
+        StatusChip({
+          label: Fmt.statusLabel(item.status),
+          color: Fmt.statusColor(item.status)
+        })
       }
       .width('100%')
     }
