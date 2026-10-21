@@ -18,11 +18,15 @@ HarmonyOS NEXT 原生客户端（ArkTS + ArkUI 声明式 UI），对接 Server �
 | 会话列表（全量、按项目分组、折叠） | ✅ 真机验证 |
 | 搜索 / 按设备筛选 / 归档切换 | ✅ |
 | 会话详情：Timeline、composer、附件、takeover、interrupt、审批 | ✅ |
+| 工具块默认折叠成一行，点击展开原文 | ✅ 真机验证 |
+| 附件三来源：拍照 / 相册 / 文件 | ✅ 真机验证 |
+| 工作区文件浏览 + 文本预览 | ✅ 真机验证 |
+| 工作区命令执行（一次性 `shell/exec`） | ✅ 真机验证 |
 | 消息乐观发送（pending 气泡） | ✅ |
 | 系统通知（需审批 / 回合结束）+ 点击直达会话 | ✅ 模拟器端到端验证 |
 | 应用角标（未读数） | ✅ 实测生效 |
 | 后台保活（仅在回合运行中） | ⚠️ 代码就绪，模拟器不一定放行 |
-| 实况窗（锁屏进度） | ⚠️ 需华为按应用审批，无权益时静默降级，未实测 |
+| 实况窗（锁屏进度） | ⚠️ 需华为按应用审批；设置页会显示当前是否已开通 |
 | QR 扫码登录 | ❌ 只支持粘贴 payload，未接 Scan Kit |
 | 真机推送（服务端主动） | ❌ 无，见「已知限制」 |
 
@@ -38,6 +42,7 @@ entry/src/main/ets/
     Login.ets                      Server 配置 + 账号密码登录 + QR payload 登录
     Sessions.ets                   会话列表：分组 / 折叠 / 搜索 / 设备筛选 / 归档 / 滑动归档与 Pin
     SessionDetail.ets              Timeline + composer + takeover + interrupt + 审批 + 文件预览
+    Workspace.ets                  ★ 会话工作区：文件浏览 + 文本预览 + 一次性命令执行
     Devices.ets                    Connector 列表
     SettingsPage.ets               账号信息 + 通知开关 + 系统通知权限 + 退出登录
   core/
@@ -124,6 +129,9 @@ $HDC -t <serial> file recv /data/local/tmp/s.jpeg /tmp/s.jpeg
 | takeover / 模型 / 权限 | `PATCH /sessions/{id}/runtime/selections` |
 | 审批响应 | `POST /sessions/{id}/notices/{noticeId}/respond` |
 | 模型 / 权限目录 | `GET /sessions/{id}/runtime/catalogs/{model,permission}` |
+| 工作区目录列表 | `POST /connectors/{id}/fs/list?root=<cwd>`，body `{path}` |
+| 读文本（预览） | `POST /connectors/{id}/fs/readText?root=<cwd>`，body `{path}` |
+| 一次性执行命令 | `POST /connectors/{id}/shell/exec?root=<cwd>`，body `{command, cwd?, timeoutMs}` |
 | WS ticket | `POST /ws-ticket` |
 
 **注意**：`MessageCreateRequest` 是 `extra="forbid"`，消息体只能带 `content` / `attachments` /
@@ -217,7 +225,12 @@ running / pending / stopping / waiting 时**启动。常驻会常亮一条通知
    代码路径已就绪且无权益时安全跳过。
 3. **后台保活未在真机验证。** 模拟器对长时任务放行不稳定。
 4. **QR 登录只支持粘贴 payload**，没接 Scan Kit 摄像头扫码。
-5. **没有文件浏览 / Terminal / Git 面板**，与 iOS 第一阶段范围一致。
+5. **命令执行是一次性的，不是交互式终端。** 走 `POST /connectors/{id}/shell/exec`，
+   每次一条命令、拿到 stdout/stderr 后结束，没有 PTY、没有 ANSI、没有长驻会话。
+   要做真正的终端，需要接 `POST /terminals-v2` 创建终端 + WebSocket
+   `/connectors/{id}/terminals-v2/{tid}/stream?token=<jwt>`（注意这条流用 Bearer token，
+   不是 `/ws-ticket` 的 ticket，现有 `RealtimeStream` 不能直接复用），再叠一个 ANSI 渲染器。
+   Git 面板同样还没有。
 6. **会话列表没有虚拟化。** 566 条一次性建视图，目前可用但长列表滚动不是最优，
    要优化就把 `List` 换成 `LazyForEach` + `IDataSource`。
 
