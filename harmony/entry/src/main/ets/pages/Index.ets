@@ -112,59 +112,28 @@ struct MainTabs {
   @State activeTab: number = 0;
 
   build() {
-    Stack({ alignContent: Alignment.Bottom }) {
-      Tabs({ index: this.activeTab }) {
-        TabContent() {
-          Sessions()
-        }
-        .tabBar(this.TabItem('Sessions', 0))
-
-        TabContent() {
-          Devices()
-        }
-        .tabBar(this.TabItem('Devices', 1))
-
-        TabContent() {
-          SettingsPage()
-        }
-        .tabBar(this.TabItem('Settings', 2))
+    Tabs({ index: this.activeTab }) {
+      TabContent() {
+        Sessions()
       }
-      // The built-in bar reserves its own strip, so content can never run under
-      // it and the material has nothing to blur. Hide it and draw the bar here.
-      .barHeight(0)
-      .backgroundColor(Theme.bg)
-      .onChange((index: number) => {
-        this.activeTab = index;
-      })
+      .tabBar(this.TabItem('Sessions', 0))
 
-      Row({ space: 2 }) {
-        this.BarItem('Sessions', 0)
-        this.BarItem('Devices', 1)
-        this.BarItem('Settings', 2)
+      TabContent() {
+        Devices()
       }
-      .padding(Theme.spaceXs)
-      // Real frosted glass: whatever the list scrolls behind gets blurred.
-      .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
-      .borderRadius(Theme.radiusPill)
-      .margin({ bottom: Theme.spaceXl })
+      .tabBar(this.TabItem('Devices', 1))
+
+      TabContent() {
+        SettingsPage()
+      }
+      .tabBar(this.TabItem('Settings', 2))
     }
-    .width('100%')
-    .height('100%')
+    .barPosition(BarPosition.End)
+    .barMode(BarMode.Fixed)
     .backgroundColor(Theme.bg)
-  }
-
-  @Builder
-  BarItem(label: string, index: number) {
-    Text(label)
-      .fontSize(Theme.fontTiny)
-      .fontWeight(this.activeTab === index ? FontWeight.Medium : FontWeight.Normal)
-      .fontColor(this.activeTab === index ? Theme.accent : Theme.faint)
-      .padding({ left: 18, right: 18, top: 9, bottom: 9 })
-      .borderRadius(Theme.radiusPill)
-      .backgroundColor(this.activeTab === index ? Theme.raised : Color.Transparent)
-      .onClick(() => {
-        this.activeTab = index;
-      })
+    .onChange((index: number) => {
+      this.activeTab = index;
+    })
   }
 
   // The unread count lives in the Sessions header, not here: a `tabBar` builder

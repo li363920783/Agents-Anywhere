@@ -297,8 +297,7 @@ export struct Sessions {
             }
             .width(Theme.gutter)
             .layoutWeight(1)
-            // Clears the floating tab bar, which content now scrolls beneath.
-            .padding({ bottom: Theme.barClearance })
+            .padding({ bottom: Theme.spaceLg })
           }
           .onRefreshing(() => {
             // Data arrives by push, so a pull means "resync the socket".

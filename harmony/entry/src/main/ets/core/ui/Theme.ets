@@ -57,6 +57,4 @@ export class Theme {
   static readonly radiusCard: number = 14;
   static readonly radiusBubble: number = 14;
   static readonly radiusPill: number = 999;
-  /** Bottom padding a scroll view needs so the floating tab bar clears it. */
-  static readonly barClearance: number = 96;
 }
