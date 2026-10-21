@@ -51,14 +51,24 @@ export class LiveView {
     try {
       const view = await LiveView.build(sessionTitle, detail);
       if (LiveView.showing && LiveView.title === sessionTitle) {
-        await liveViewManager.updateLiveView(view);
+        LiveView.report('update', await liveViewManager.updateLiveView(view));
       } else {
-        await liveViewManager.startLiveView(view);
+        LiveView.report('start', await liveViewManager.startLiveView(view));
         LiveView.showing = true;
         LiveView.title = sessionTitle;
       }
     } catch (e) {
       hilog.warn(0x0000, TAG, 'show: %{public}s', (e as Error).message);
+    }
+  }
+
+  /** The API reports failures in the result, not by throwing. */
+  private static report(action: string, result: liveViewManager.LiveViewResult): void {
+    if (result.resultCode === 0) {
+      hilog.info(0x0000, TAG, '%{public}s ok', action);
+    } else {
+      hilog.warn(0x0000, TAG, '%{public}s failed %{public}d %{public}s',
+        action, result.resultCode, result.message);
     }
   }
 
