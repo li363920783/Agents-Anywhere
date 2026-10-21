@@ -237,7 +237,11 @@ export class DashboardWatcher {
         void LiveView.hide();
       } else {
         const live = running as SessionView;
-        void LiveView.show(displayTitle(live), `${Fmt.statusLabel(live.status)} · ${live.runtime}`);
+        void LiveView.show(
+          live.id,
+          displayTitle(live),
+          `${Fmt.statusLabel(live.status)} · ${live.runtime}`
+        );
       }
     }
   }

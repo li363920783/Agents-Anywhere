@@ -3,6 +3,7 @@ import { pushService } from '@kit.PushKit';
 import { wantAgent, Want, WantAgent } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { WANT_SESSION_KEY } from './Notifier';
 
 const TAG = 'AA-LiveView';
 const BUNDLE_NAME = 'com.morin.clauderelay';
@@ -53,6 +54,8 @@ export class LiveView {
   private static pushToken: string = '';
   private static showing: boolean = false;
   private static title: string = '';
+  /** Session the card points at; burned into the tap intent. */
+  private static sessionId: string = '';
   private static sequence: number = 0;
   /** New per start: a reused id collides with the previous card's archive slot. */
   private static id: number = 0;
@@ -101,10 +104,11 @@ export class LiveView {
   }
 
   /** Starts, or refreshes, the card for `sessionTitle`. */
-  static async show(sessionTitle: string, detail: string): Promise<void> {
+  static async show(sessionId: string, sessionTitle: string, detail: string): Promise<void> {
     if (!await LiveView.isEnabled()) {
       return;
     }
+    LiveView.sessionId = sessionId;
     const switching = !LiveView.showing || LiveView.title !== sessionTitle;
     if (switching) {
       // Clear any orphan first: a card left behind by a killed process still
@@ -112,6 +116,7 @@ export class LiveView {
       await LiveView.hide();
       LiveView.id = Date.now() % 2000000000;
       LiveView.sequence = 0;
+      LiveView.sessionId = sessionId;
     }
     try {
       const view = await LiveView.build(sessionTitle, detail, PROGRESS_RUNNING, 0);
@@ -206,9 +211,14 @@ export class LiveView {
   }
 
   private static async tapAgent(): Promise<WantAgent> {
+    // The session id has to travel with the intent: without it, tapping the
+    // card only raises the app on whatever session was last open.
+    const params: Record<string, Object> = {};
+    params[WANT_SESSION_KEY] = LiveView.sessionId;
     const want: Want = {
       bundleName: BUNDLE_NAME,
-      abilityName: ABILITY_NAME
+      abilityName: ABILITY_NAME,
+      parameters: params
     };
     const info: wantAgent.WantAgentInfo = {
       wants: [want],
