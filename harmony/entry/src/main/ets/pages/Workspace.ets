@@ -276,8 +276,15 @@ export struct Workspace {
           ForEach(this.entries, (entry: FsEntry) => {
             ListItem() {
               Row({ space: 10 }) {
-                Text(entry.isDirectory ? '📁' : '📄')
-                  .fontSize(Theme.fontBody)
+                if (entry.isDirectory) {
+                  SymbolGlyph($r('sys.symbol.folder'))
+                    .fontSize(18)
+                    .fontColor([Theme.accent])
+                } else {
+                  SymbolGlyph($r('sys.symbol.doc_plaintext'))
+                    .fontSize(18)
+                    .fontColor([Theme.muted])
+                }
                 Text(entry.name)
                   .fontSize(Theme.fontSmall)
                   .fontFamily('monospace')

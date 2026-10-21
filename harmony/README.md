@@ -61,7 +61,7 @@ entry/src/main/ets/
     crypto/PasswordVerifier.ets    PBKDF2-SHA256 派生（与 Server 逐字节一致）
     model/                         wire DTO（auth / session / connector / bodies / nav）
     util/                          JSON 安全读取、base64、时间与状态格式化
-    ui/Theme.ets                   设计 token（Slate 降饱和深色）
+    ui/Theme.ets                   设计 token（全部取自 sys.color.*，跟随系统深浅色）
   ui/MarkdownView.ets              Markdown 渲染（避免百分比宽度，防溢出）
 ```
 
@@ -290,3 +290,39 @@ HarmonyOS 对后台应用的网络管控很硬：**退到后台约 2 秒后网�
   再把 bundleName 和签名换回去 —— 代码里只有 4 处 `BUNDLE_NAME` 常量 + `AppScope/app.json5`。
 
 显示名和身份无关：`app_name` 字符串想叫什么都可以，不影响实况窗权益。
+
+---
+
+## 10. 视觉：跟随系统，而不是自绘深色
+
+早期版本用的是手绘深色盘（"Slate"）。**这是个错误**，而且代价是可见的：
+
+- 状态栏、导航栏、TabBar、系统材质**都跟系统主题走**。深色 App 跑在浅色系统的机器上，
+  就被一圈浅色 chrome 框住，看着像没做完。
+- `HdsTabs` 的 `systemMaterialEffect` 材质也跟系统主题走，深色 App 下会渲染成浅色，
+  白字压在浅灰上基本看不见；`barBackgroundColor` 会被 HDS 忽略，救不回来。
+- `colorInvert` 只在文字/图标使用 `sys.color.*` 资源时才生效，硬编码 hex 触发不了。
+
+现在 `core/ui/Theme.ets` 全部改成系统资源：
+
+| 用途 | token |
+| --- | --- |
+| 页面底色 | `sys.color.ohos_id_color_background` |
+| 卡片 / 次级面 | `sys.color.ohos_id_color_sub_background` |
+| 输入框 / 抬升面 | `sys.color.ohos_id_color_text_field_bg` |
+| 主 / 次 / 三级文字 | `ohos_id_color_primary` / `_secondary` / `_tertiary` |
+| 强调色（选中、链接、强调） | `ohos_id_color_emphasize` |
+| 危险 | `ohos_id_color_alert` |
+| 警告 | `ohos_id_color_warning` |
+| 分割线 | `ohos_id_color_list_separator` |
+
+于是 App 自动跟随浅色/深色，`HdsTabs` 的悬浮材质也终于能正常显示。
+
+**注意**：`sys.color.*` / `sys.symbol.*` 的真实名字以
+`$SDK/openharmony/ets/build-tools/ets-loader/sysResource.js` 为准 —— 网上和智能体给的
+`sys.color.font_primary`、`sys.symbol.document` 这类名字**并不存在**（写错是运行时静默失效，
+不报编译错）。已核对的可用图标：`folder`、`doc_plaintext`、`arrow_left`、`arrow_clockwise`、
+`plus`、`paperplane`、`gearshape`、`message`、`chevron_right`、`chevron_down`。
+
+设计语言另外两条：卡片用阴影抬升而不是描边（每张卡都描边会读成表格）；
+间距走 4pt 刻度（`Theme.spaceXs..Xl`），不再各写各的数字。
