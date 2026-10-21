@@ -133,17 +133,51 @@ export struct SessionDetail {
     }, delay);
   }
 
+  /** Index whose selectionId matches, or -1. `applySelection` stores selectionIds. */
+  private indexOfSelection(selectionIds: Array<string>, wanted: string): number {
+    if (wanted.length === 0) {
+      return -1;
+    }
+    for (let i = 0; i < selectionIds.length; i++) {
+      if (selectionIds[i] === wanted) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private defaultIndex(flags: Array<boolean>): number {
+    for (let i = 0; i < flags.length; i++) {
+      if (flags[i]) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
   private async loadCatalogs(): Promise<void> {
+    // The session remembers the last selection the server applied; the catalog
+    // default is only a fallback. Without this the pickers reset on every visit.
+    let selectedModel = '';
+    let selectedPermission = '';
+    try {
+      const stateRes = await ApiClient.shared.get(`/sessions/${this.sessionId}/runtime/state`);
+      const selections = Json.obj(Json.obj(stateRes, 'state'), 'selections');
+      selectedModel = Json.str(selections, 'model') ?? '';
+      selectedPermission = Json.str(selections, 'permission') ?? '';
+    } catch (e) {
+      // best-effort: fall through to catalog defaults
+    }
+
     try {
       const modelRes = await ApiClient.shared.get(`/sessions/${this.sessionId}/runtime/catalogs/model`);
       const modelCatalog = ModelCatalog.fromJson(Json.obj(modelRes, 'catalog'));
       this.models = modelCatalog.models;
-      let mi = -1;
-      for (let i = 0; i < this.models.length; i++) {
-        if (this.models[i].isDefault) {
-          mi = i;
-          break;
-        }
+      const selectionIds: Array<string> = this.models.map((m: ModelItem) => m.selectionId);
+      const defaults: Array<boolean> = this.models.map((m: ModelItem) => m.isDefault);
+      let mi = this.indexOfSelection(selectionIds, selectedModel);
+      if (mi < 0) {
+        mi = this.defaultIndex(defaults);
       }
       this.modelIndex = mi >= 0 ? mi : (this.models.length > 0 ? 0 : -1);
     } catch (e) {
@@ -153,12 +187,11 @@ export struct SessionDetail {
       const permissionRes = await ApiClient.shared.get(`/sessions/${this.sessionId}/runtime/catalogs/permission`);
       const permissionCatalog = PermissionCatalog.fromJson(Json.obj(permissionRes, 'catalog'));
       this.permissions = permissionCatalog.permissions;
-      let pi = -1;
-      for (let i = 0; i < this.permissions.length; i++) {
-        if (this.permissions[i].isDefault) {
-          pi = i;
-          break;
-        }
+      const selectionIds: Array<string> = this.permissions.map((p: PermissionItem) => p.selectionId);
+      const defaults: Array<boolean> = this.permissions.map((p: PermissionItem) => p.isDefault);
+      let pi = this.indexOfSelection(selectionIds, selectedPermission);
+      if (pi < 0) {
+        pi = this.defaultIndex(defaults);
       }
       this.permissionIndex = pi >= 0 ? pi : (this.permissions.length > 0 ? 0 : -1);
     } catch (e) {

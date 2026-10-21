@@ -11,8 +11,23 @@ import { KeepAlive } from '../notify/KeepAlive';
 import { LiveView } from '../notify/LiveView';
 
 const TAG = 'AA-Watch';
-/** Statuses that mean a turn is in flight. */
-const ACTIVE_STATUSES: Array<string> = ['running', 'pending', 'stopping', 'waiting'];
+/**
+ * Statuses where a turn is actually executing — the only time a continuous
+ * task is worth its battery and its permanent notification.
+ */
+const RUNNING_STATUSES: Array<string> = ['running', 'pending', 'stopping', 'waiting'];
+
+/**
+ * Statuses where the user is blocked on this session: a turn is executing, or
+ * it is sitting waiting for a confirmation. Both are worth a lock-screen card.
+ */
+const ACTIVE_STATUSES: Array<string> = [
+  'running',
+  'pending',
+  'stopping',
+  'waiting',
+  'waiting_approval'
+];
 const RECONNECT_MIN_MS = 2000;
 const RECONNECT_MAX_MS = 60000;
 
@@ -61,6 +76,8 @@ export class DashboardWatcher {
   private prev: Record<string, string> = {};
   private stream: RealtimeStream | null = null;
   private seeded: boolean = false;
+  /** `id|status` currently shown in the live view, to avoid re-starting it. */
+  private liveKey: string = '';
   private wantRun: boolean = false;
   private retryTimer: number = -1;
   private backoff: number = RECONNECT_MIN_MS;
@@ -186,9 +203,11 @@ export class DashboardWatcher {
       if (s.unread) {
         unread++;
       }
-      if (ACTIVE_STATUSES.indexOf(s.status) >= 0) {
+      if (RUNNING_STATUSES.indexOf(s.status) >= 0) {
         active++;
-        // The live view shows one turn: the most recent one to start running.
+      }
+      // The live view shows one session: the most recent one that needs you.
+      if (ACTIVE_STATUSES.indexOf(s.status) >= 0) {
         if (running === null || (s.lastActivityAt ?? '') > (running.lastActivityAt ?? '')) {
           running = s;
         }
@@ -208,11 +227,18 @@ export class DashboardWatcher {
     AppStorage.setOrCreate(UNREAD_KEY, unread);
     void Notifier.setBadge(unread);
     KeepAlive.sync(active > 0);
-    if (running === null) {
-      void LiveView.hide();
-    } else {
-      const live = running as SessionView;
-      void LiveView.show(displayTitle(live), `${Fmt.statusLabel(live.status)} · ${live.runtime}`);
+
+    // Only touch the live view when the card's content actually changes;
+    // every dashboard frame would otherwise re-start it.
+    const liveKey = running === null ? '' : `${running.id}|${running.status}`;
+    if (liveKey !== this.liveKey) {
+      this.liveKey = liveKey;
+      if (running === null) {
+        void LiveView.hide();
+      } else {
+        const live = running as SessionView;
+        void LiveView.show(displayTitle(live), `${Fmt.statusLabel(live.status)} · ${live.runtime}`);
+      }
     }
   }
 

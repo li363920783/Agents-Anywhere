@@ -63,7 +63,15 @@ export class RealtimeStream {
     sock.on('error', (err: BusinessError) => {
       this.cb.onError(err.message);
     });
-    sock.connect(url, (err: BusinessError) => {
+    // Transport-level liveness. When the app is backgrounded the system clears
+    // the connection's address and often never fires `close`, so without pings
+    // a dead socket stays "open" and only the frame watchdog notices.
+    // Both fields are in seconds (SDK: 0..30000, pongTimeout <= pingInterval).
+    const options: webSocket.WebSocketRequestOptions = {
+      pingInterval: 20,
+      pongTimeout: 10
+    };
+    sock.connect(url, options, (err: BusinessError) => {
       if (err) {
         this.cb.onError(err.message);
       }

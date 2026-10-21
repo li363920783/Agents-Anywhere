@@ -32,6 +32,11 @@ export default class EntryAbility extends UIAbility {
   }
 
   onForeground(): void {
+    // Backgrounding freezes the app's network after ~2s and releases it after
+    // ~12s: the socket object survives but its address is cleared, and `close`
+    // usually never fires — so the UI would keep claiming it is connected.
+    // Reconnect unconditionally rather than waiting for an event.
+    DashboardWatcher.shared.reconnect();
     // The tray alert for the session the user is now reading is stale.
     const open = AppStorage.get<string>(OPEN_SESSION_KEY);
     if (open !== undefined && open.length > 0) {
