@@ -70,6 +70,28 @@ export struct Sessions {
   @State query: string = '';
   /** Names of project sections the user collapsed. */
   @State collapsed: Array<string> = [];
+  /** Drives the staggered entrance; flipped once, after the first rows exist. */
+  @State revealed: boolean = false;
+  /** Session under the finger, for the press-scale. */
+  @State pressedId: string = '';
+  /** Y of the skeleton's sweeping highlight. */
+  @State sweep: number = -140;
+  private revealTimer: number = -1;
+
+  /**
+   * Plays the entrance once. Deferred a frame so the cards animate *from* their
+   * initial state — flipping it in the same frame they are built would just
+   * render them already-revealed.
+   */
+  private scheduleReveal(): void {
+    if (this.revealed || this.revealTimer !== -1) {
+      return;
+    }
+    this.revealTimer = setTimeout(() => {
+      this.revealTimer = -1;
+      this.revealed = true;
+    }, 60);
+  }
 
   private isCollapsed(name: string): boolean {
     return this.collapsed.indexOf(name) >= 0;
@@ -94,6 +116,7 @@ export struct Sessions {
   onSessionsChanged(): void {
     this.loading = false;
     this.applyFilter();
+    this.scheduleReveal();
   }
 
   async aboutToAppear(): Promise<void> {
@@ -105,6 +128,12 @@ export struct Sessions {
     }
     await this.loadConnectors();
     this.applyFilter();
+    this.scheduleReveal();
+    // The skeleton's highlight sweeps down and restarts. Only runs while the
+    // list is loading, and it is the one animated element on screen then.
+    animateTo({ duration: 1100, curve: Curve.Linear, iterations: -1 }, () => {
+      this.sweep = 560;
+    });
   }
 
   /** Device chips are best-effort: a failure just leaves "All devices" alone. */
@@ -256,17 +285,19 @@ export struct Sessions {
       .padding({ top: 10 })
 
       if (this.groups.length === 0) {
-        Column() {
-          Text(this.loading
-            ? 'Connecting…'
-            : (this.query.trim().length > 0
+        if (this.loading) {
+          this.Skeleton()
+        } else {
+          Column() {
+            Text(this.query.trim().length > 0
               ? `No sessions match “${this.query.trim()}”`
-              : (this.archived ? 'No archived sessions' : 'No active sessions')))
-            .fontSize(Theme.fontSmall)
-            .fontColor(Theme.faint)
-            .margin({ top: 60 })
+              : (this.archived ? 'No archived sessions' : 'No active sessions'))
+              .fontSize(Theme.fontSmall)
+              .fontColor(Theme.faint)
+              .margin({ top: 60 })
+          }
+          .layoutWeight(1)
         }
-        .layoutWeight(1)
       } else {
         Column() {
           Column() {
@@ -280,9 +311,9 @@ export struct Sessions {
                   this.GroupHeader(group.name, group.items.length, this.isCollapsed(group.name))
                 }
                 if (!this.isCollapsed(group.name)) {
-                  ForEach(group.items, (item: SessionView) => {
+                  ForEach(group.items, (item: SessionView, index: number) => {
                     ListItem() {
-                      this.SessionRow(item, group.name)
+                      this.SessionRow(item, group.name, index)
                     }
                     .swipeAction({
                       end: {
@@ -313,6 +344,63 @@ export struct Sessions {
     .height('100%')
     // Transparent so the ambient light layer behind the tab shows through.
     .backgroundColor(Color.Transparent)
+  }
+
+  /**
+   * Loading placeholder (加载动画). One highlight sweeping the whole stack, not a
+   * shimmer per card: the sweep is a single animated element, and the inventory
+   * is unbounded, so a per-card loop would repaint every frame.
+   */
+  @Builder
+  Skeleton() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Column({ space: 10 }) {
+        ForEach([0, 1, 2, 3, 4], (n: number) => {
+          Column({ space: 10 }) {
+            Row({ space: 8 }) {
+              Circle({ width: 7, height: 7 }).fill(Theme.border)
+              Row()
+                .height(14)
+                .borderRadius(4)
+                .backgroundColor(Theme.border)
+                .layoutWeight(1)
+            }
+            .width('100%')
+
+            Row()
+              .height(11)
+              .width('46%')
+              .borderRadius(4)
+              .backgroundColor(Theme.border)
+          }
+          .width('100%')
+          .padding({
+            left: Theme.spaceLg,
+            right: Theme.spaceLg,
+            top: Theme.spaceMd,
+            bottom: Theme.spaceMd
+          })
+          .backgroundColor(Theme.surface)
+          .borderRadius(Theme.radiusCard)
+          .border({ width: 1, color: Theme.haloSoft })
+          .alignItems(HorizontalAlign.Start)
+        }, (n: number) => `skeleton-${n}`)
+      }
+      .width(Theme.gutter)
+
+      Row()
+        .width(Theme.gutter)
+        .height(140)
+        .linearGradient({
+          direction: GradientDirection.Bottom,
+          colors: [[Theme.haloFade, 0.0], [Theme.haloSoft, 0.5], [Theme.haloFade, 1.0]]
+        })
+        .translate({ y: this.sweep })
+    }
+    .width('100%')
+    .layoutWeight(1)
+    .padding({ top: 8 })
+    .clip(true)
   }
 
   @Builder
@@ -373,7 +461,7 @@ export struct Sessions {
   }
 
   @Builder
-  SessionRow(item: SessionView, project: string) {
+  SessionRow(item: SessionView, project: string, index: number) {
     Column({ space: 8 }) {
       Row({ space: 8 }) {
         Circle({ width: 7, height: 7 })
@@ -452,6 +540,33 @@ export struct Sessions {
     .border({ width: 1, color: Theme.haloSoft })
     .shadow({ radius: 12, color: Theme.shadow, offsetX: 0, offsetY: 3 })
     .alignItems(HorizontalAlign.Start)
+    // 弹性微交互: dip on touch-down, spring back on release. Press is fast and
+    // release is slow, which is what reads as "physical".
+    .scale({
+      x: this.pressedId === item.id ? 0.97 : 1.0,
+      y: this.pressedId === item.id ? 0.97 : 1.0
+    })
+    .animation({
+      duration: this.pressedId === item.id ? 180 : 420,
+      curve: Curve.FastOutSlowIn
+    })
+    // 模糊渐入: blur + rise, staggered. The delay is capped — at 60ms per row a
+    // 300-session list would take 18 seconds to finish arriving.
+    .opacity(this.revealed ? 1.0 : 0.0)
+    .blur(this.revealed ? 0 : 8)
+    .translate({ x: 0, y: this.revealed ? 0 : 24 })
+    .animation({
+      duration: 480,
+      curve: Curve.EaseOut,
+      delay: Math.min(index, 9) * 45
+    })
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.pressedId = item.id;
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.pressedId = '';
+      }
+    })
     .onClick(() => {
       const param = new SessionDetailParam();
       param.id = item.id;
