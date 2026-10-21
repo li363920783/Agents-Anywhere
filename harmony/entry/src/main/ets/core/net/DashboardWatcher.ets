@@ -128,6 +128,14 @@ export class DashboardWatcher {
       this.start();
       return;
     }
+    if (Demo.on()) {
+      // `onForeground` reconnects unconditionally. In the sample account there
+      // is nothing to reconnect to — without this it would open a real socket
+      // and quietly replace the sample inventory with the account's own.
+      AppStorage.setOrCreate(SESSIONS_KEY, Demo.sessions());
+      AppStorage.setOrCreate(UNREAD_KEY, 1);
+      return;
+    }
     this.clearRetry();
     if (this.stream !== null) {
       this.stream.stop();
