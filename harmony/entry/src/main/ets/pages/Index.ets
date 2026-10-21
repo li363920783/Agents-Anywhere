@@ -9,6 +9,7 @@ import { Workspace } from './Workspace';
 import { SessionDetailParam } from '../core/model/Nav';
 import { WorkspaceParam } from '../core/model/Workspace';
 import { Theme } from '../core/ui/Theme';
+import { uiMaterial } from '@kit.ArkUI';
 
 /** EntryAbility publishes a notification-tap target here. */
 const OPEN_SESSION_KEY = 'aa_open_session';
@@ -110,48 +111,59 @@ struct Index {
 struct MainTabs {
   @Consume('rootStack') rootStack: NavPathStack;
   @State activeTab: number = 0;
+  /** THIN is the documented style for navigation bars. */
+  private barMaterial: uiMaterial.ImmersiveMaterial = new uiMaterial.ImmersiveMaterial({
+    style: uiMaterial.ImmersiveStyle.THIN,
+    interactive: true,
+    lightEffect: { color: Color.White }
+  });
 
   build() {
-    // No `Tabs`: both of its modes clipped the page ~320px above the bar, so no
-    // content ever painted underneath and the material had nothing to blur.
-    // A Stack renders each page full-height and floats the bar on top.
-    Stack({ alignContent: Alignment.Bottom }) {
-      if (this.activeTab === 0) {
+    // Floating immersive bar: `barPosition` must be in the constructor, plus
+    // horizontal layout and `barOverlap`. Lists carry their bottom clearance as
+    // a trailing spacer item — a `padding({ bottom })` on the List itself makes
+    // ArkUI stop painting it ~320px early, which is what made the rows look
+    // like they ended above the bar.
+    Tabs({ barPosition: BarPosition.End, index: this.activeTab }) {
+      TabContent() {
         Sessions()
-      } else if (this.activeTab === 1) {
+      }
+      .tabBar(this.TabItem('Sessions', 0))
+
+      TabContent() {
         Devices()
-      } else {
+      }
+      .tabBar(this.TabItem('Devices', 1))
+
+      TabContent() {
         SettingsPage()
       }
-
-      Row({ space: 2 }) {
-        this.BarItem('Sessions', 0)
-        this.BarItem('Devices', 1)
-        this.BarItem('Settings', 2)
-      }
-      .padding(Theme.spaceXs)
-      .backgroundBlurStyle(BlurStyle.COMPONENT_THIN)
-      .borderRadius(Theme.radiusPill)
-      .margin({ bottom: Theme.spaceXl })
+      .tabBar(this.TabItem('Settings', 2))
     }
-    .width('100%')
-    .height('100%')
-    .backgroundColor(Theme.bg)
-    .clip(false)
+    .vertical(false)
+    .barOverlap(true)
+    .barFloatingStyle({
+      barBottomMargin: 28,
+      // The default scrim (#CCF1F3F5 in light mode) covers whatever sits behind
+      // the bar; transparent lets the material show through instead.
+      maskColor: '#00000000',
+      systemMaterial: this.barMaterial
+    })
+    .onChange((index: number) => {
+      this.activeTab = index;
+    })
   }
 
   @Builder
-  BarItem(label: string, index: number) {
-    Text(label)
-      .fontSize(Theme.fontTiny)
-      .fontWeight(this.activeTab === index ? FontWeight.Medium : FontWeight.Normal)
-      .fontColor(this.activeTab === index ? Theme.accent : Theme.faint)
-      .padding({ left: 18, right: 18, top: 9, bottom: 9 })
-      .borderRadius(Theme.radiusPill)
-      .backgroundColor(this.activeTab === index ? Theme.raised : Color.Transparent)
-      .onClick(() => {
-        this.activeTab = index;
-      })
+  TabItem(label: string, index: number) {
+    Column() {
+      Text(label)
+        .fontSize(Theme.fontTiny)
+        .fontWeight(this.activeTab === index ? FontWeight.Medium : FontWeight.Normal)
+        .fontColor(this.activeTab === index ? Theme.accent : Theme.faint)
+    }
+    .width('100%')
+    .height(52)
+    .justifyContent(FlexAlign.Center)
   }
-
 }
