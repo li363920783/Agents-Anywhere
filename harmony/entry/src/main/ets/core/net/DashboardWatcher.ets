@@ -30,6 +30,8 @@ const ACTIVE_STATUSES: Array<string> = [
 ];
 const RECONNECT_MIN_MS = 2000;
 const RECONNECT_MAX_MS = 60000;
+/** How often the live view card is refreshed while a turn runs. */
+const LIVE_TICK_MS = 30000;
 
 /** AppStorage key holding the unread count the tab bar badges. */
 export const UNREAD_KEY = 'aa_unread';
@@ -78,6 +80,9 @@ export class DashboardWatcher {
   private seeded: boolean = false;
   /** `id|status` currently shown in the live view, to avoid re-starting it. */
   private liveKey: string = '';
+  private liveSession: SessionView | null = null;
+  private liveStartedAt: number = 0;
+  private liveTicker: number = -1;
   private wantRun: boolean = false;
   private retryTimer: number = -1;
   private backoff: number = RECONNECT_MIN_MS;
@@ -96,6 +101,9 @@ export class DashboardWatcher {
   stop(): void {
     this.wantRun = false;
     this.clearRetry();
+    this.stopLiveTicker();
+    this.liveSession = null;
+    this.liveKey = '';
     if (this.stream !== null) {
       this.stream.stop();
       this.stream = null;
@@ -234,15 +242,47 @@ export class DashboardWatcher {
     if (liveKey !== this.liveKey) {
       this.liveKey = liveKey;
       if (running === null) {
+        this.stopLiveTicker();
+        this.liveSession = null;
         void LiveView.hide();
       } else {
-        const live = running as SessionView;
-        void LiveView.show(
-          live.id,
-          displayTitle(live),
-          `${Fmt.statusLabel(live.status)} · ${live.runtime}`
-        );
+        this.liveStartedAt = Date.now();
+        this.startLiveTicker(running as SessionView);
       }
+    }
+  }
+
+  /**
+   * Refreshes the card. Also doubles as the progress update a `dataTransfer`
+   * continuous task needs, which is cancelled after ten minutes without one.
+   */
+  private publishLive(session: SessionView): void {
+    this.liveSession = session;
+    void LiveView.show(
+      session.id,
+      displayTitle(session),
+      `${Fmt.statusLabel(session.status)} · ${session.runtime}`,
+      LiveView.progressFor(Date.now() - this.liveStartedAt)
+    );
+  }
+
+  private startLiveTicker(session: SessionView): void {
+    this.stopLiveTicker();
+    this.publishLive(session);
+    this.liveTicker = setInterval(() => {
+      const current = this.liveSession;
+      if (current === null) {
+        this.stopLiveTicker();
+        return;
+      }
+      this.publishLive(current);
+    }, LIVE_TICK_MS);
+  }
+
+  private stopLiveTicker(): void {
+    if (this.liveTicker !== -1) {
+      clearInterval(this.liveTicker);
+      this.liveTicker = -1;
     }
   }
 

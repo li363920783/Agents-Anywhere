@@ -24,11 +24,14 @@ const ACCENT = '#FF3FB950';
 const TRACK = '#333FB950';
 
 /**
- * Progress shown while running. A turn has no measurable completion, so the
- * bar sits near the start rather than creeping towards 100 and reading as
- * "almost done"; only a real finish jumps it.
+ * Progress shown while running. A turn has no measurable completion, so the bar
+ * eases towards a ceiling and never reaches it — a bar that creeps to 90% reads
+ * as "almost done" while the agent may have just started.
  */
-const PROGRESS_RUNNING = 10;
+const PROGRESS_START = 8;
+const PROGRESS_CEILING = 70;
+/** Half-way point of the easing curve, in minutes. */
+const PROGRESS_HALF_LIFE_MIN = 5;
 const PROGRESS_DONE = 100;
 
 /** How long the finished card lingers in the shade, in seconds. */
@@ -69,6 +72,18 @@ export class LiveView {
   }
 
   /**
+   * Soft progress for a turn of unknown length: eases from START towards the
+   * ceiling with a five-minute half-life, so the bar moves early and then
+   * settles instead of racing to 100 while the agent is still working.
+   */
+  static progressFor(elapsedMs: number): number {
+    const minutes = Math.max(0, elapsedMs) / 60000;
+    const span = PROGRESS_CEILING - PROGRESS_START;
+    const eased = 1 - Math.exp(-minutes / PROGRESS_HALF_LIFE_MIN);
+    return Math.round(PROGRESS_START + span * eased);
+  }
+
+  /**
    * Push Token. Huawei expects it to be requested at app start, and the device
    * has to be registered with it in AGC's 调测设备管理 before local live-view
    * checks pass — so Settings shows it for copying.
@@ -104,7 +119,12 @@ export class LiveView {
   }
 
   /** Starts, or refreshes, the card for `sessionTitle`. */
-  static async show(sessionId: string, sessionTitle: string, detail: string): Promise<void> {
+  static async show(
+    sessionId: string,
+    sessionTitle: string,
+    detail: string,
+    progress: number
+  ): Promise<void> {
     if (!await LiveView.isEnabled()) {
       return;
     }
@@ -119,7 +139,7 @@ export class LiveView {
       LiveView.sessionId = sessionId;
     }
     try {
-      const view = await LiveView.build(sessionTitle, detail, PROGRESS_RUNNING, 0);
+      const view = await LiveView.build(sessionTitle, detail, progress, 0);
       if (switching) {
         LiveView.report('start', await liveViewManager.startLiveView(view));
         LiveView.showing = true;
