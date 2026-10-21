@@ -3,7 +3,8 @@
 HarmonyOS NEXT 原生客户端（ArkTS + ArkUI 声明式 UI），对接 Server 的 v2 HTTP + WebSocket 协议。
 与 iOS / Web / Android 客户端并列，协议行为以 Server 为准。
 
-- bundleName：`com.morin.agentsanywhere`
+- bundleName：`com.morin.clauderelay`（**借用了已废弃的 ClaudeRelay 应用身份**，见第 9 节）
+- 显示名：Agents Anywhere（`AppScope/resources/base/element/string.json` 的 `app_name`，与 bundleName 无关）
 - API namespace：`/api/v2`
 - 生产 Server：`https://m-cc.ynzykj.com`
 
@@ -26,7 +27,9 @@ HarmonyOS NEXT 原生客户端（ArkTS + ArkUI 声明式 UI），对接 Server �
 | 系统通知（需审批 / 回合结束）+ 点击直达会话 | ✅ 模拟器端到端验证 |
 | 应用角标（未读数） | ✅ 实测生效 |
 | 后台保活（仅在回合运行中） | ⚠️ 代码就绪，模拟器不一定放行 |
-| 实况窗（锁屏进度） | ⚠️ 需华为按应用审批；设置页会显示当前是否已开通 |
+| 实况窗（锁屏/状态栏进度） | ✅ 真机验证（依赖第 9 节的身份） |
+| 切后台回来自动重连 | ✅ 已修，见第 5.6 节 |
+| 模型 / 权限选择按会话记忆 | ✅ 从 `/runtime/state` 恢复 |
 | QR 扫码登录 | ❌ 只支持粘贴 payload，未接 Scan Kit |
 | 真机推送（服务端主动） | ❌ 无，见「已知限制」 |
 
@@ -82,8 +85,9 @@ DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk \
 `build-profile.json5` 的 `products[0].signingConfig` 已指向 `default`，所以命令行直接产出**已签名** HAP；
 真机必须装签名版，模拟器可以装未签名版。签名材料由 DevEco Studio 生成在 `~/.ohos/config/`。
 
-> ⚠️ `build-profile.json5` 里的 `keyPassword` / `storePassword` 是 DevEco 加密后的串，且已入库。
-> 换机器后需要重新生成签名配置，否则装不上真机。
+> ⚠️ **`build-profile.json5` 不入库**（已 gitignore）。它含有签名证书的密码和本机绝对路径，
+> 换机器必须在 DevEco 里重新配一次签名（且要指向 ClaudeRelay-release 那套证书，
+> 否则实况窗权益对不上，见第 9 节），否则装不上真机。
 
 ### 3.2 安装与调试
 
@@ -197,6 +201,20 @@ running / pending / stopping / waiting 时**启动。常驻会常亮一条通知
 `GET /sessions` 一页最多 100 条，而工作区有 566 个会话。改用 dashboard 的全量 inventory 后，
 未读角标、归档过滤、搜索都变成客户端的事，也不再需要无限滚动。
 
+### 5.6 切后台回来必须无条件重连
+
+HarmonyOS 对后台应用的网络管控很硬：**退到后台约 2 秒后网络被冻结、约 12 秒后释放**。
+连接对象本身不会被回收，但它的 IP/端口已经被清掉，而且**通常不会触发 `close` 事件** ——
+所以 App 会一直以为自己是连着的，界面显示"在线"其实早断了。
+
+因此 `EntryAbility.onForeground()` 里**无条件**调 `DashboardWatcher.reconnect()`，
+不等任何事件。同时给 WebSocket 配了 `pingInterval` / `pongTimeout`（单位是秒），
+让传输层自己发现死连接，而不是只靠 45 秒的收帧看门狗。
+
+顺带一提：`DATA_TRANSFER` 长时任务对"只收推送的被动 socket"并不成立 ——
+系统有一致性校验，且要求通过实况窗更新进度，否则 10 分钟没进度就会被取消。
+现在这个任务只在有回合运行时申请，并且和实况窗配套（实况窗本身就是在跑回合的进度展示）。
+
 ---
 
 ## 6. ArkTS / ArkUI 踩坑清单
@@ -242,3 +260,33 @@ running / pending / stopping / waiting 时**启动。常驻会常亮一条通知
 - `harmony/` 没有外部 ohpm 依赖，`ohpm install` 不需要联网。
 - 提交前至少跑一次 `assembleHap` —— ArkTS 的很多错误是编译期才暴露的。
 - 仓库根目录的 `HANDOFF-*.md` 是历史草稿，本文档是鸿蒙端的权威说明。
+
+---
+
+## 9. 为什么 bundleName 是 com.morin.clauderelay
+
+**实况窗权益是绑定 AGC 应用（bundleName + 签名证书）的，不能转移到别的包名。**
+这个客户端最初用 `com.morin.agentsanywhere`，无论场景值填 `PROGRESS` 还是 `TIMER`，
+`startLiveView` 一律返回 `1003500005` —— 这个码字面是"权益未开通"，
+但**场景值对不上也报同一个码**，所以光看错误码分不清是哪种。
+
+用户此前为另一个应用 `com.morin.clauderelay`（ClaudeRelay，已废弃）申请过实况窗，
+于是本项目直接沿用那个身份：
+
+| 项 | 值 |
+| --- | --- |
+| bundleName | `com.morin.clauderelay` |
+| 签名证书 | `~/MorinData/publicKey/huaweikey/ClaudeRelay-release.{p12,cer,p7b}` |
+| AGC 配置 | `entry/agconnect-services.json`（`package_name` 已是 clauderelay，已 gitignore） |
+| 实况窗场景 | `TIMER`（`LiveView.ets` 的 `EVENT`，必须和 AGC 开通时选的一致） |
+
+代价与注意：
+
+- 设备上这个 App 会**顶掉**原来的 ClaudeRelay；两者不能共存。
+- 换 bundleName 等于换应用，数据沙箱是新的 —— 升级后需要重新登录一次。
+- `harmony/build-profile.json5` 现在**不入库**（里面有发布证书的密码），
+  换机器要重新配签名，否则装不上真机。
+- 想改回独立身份，就得在 AGC 为 `com.morin.agentsanywhere` 单独申请实况窗权益（需要审核），
+  再把 bundleName 和签名换回去 —— 代码里只有 4 处 `BUNDLE_NAME` 常量 + `AppScope/app.json5`。
+
+显示名和身份无关：`app_name` 字符串想叫什么都可以，不影响实况窗权益。
