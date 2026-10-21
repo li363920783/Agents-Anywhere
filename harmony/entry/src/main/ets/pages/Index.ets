@@ -9,6 +9,7 @@ import { Workspace } from './Workspace';
 import { SessionDetailParam } from '../core/model/Nav';
 import { WorkspaceParam } from '../core/model/Workspace';
 import { Theme } from '../core/ui/Theme';
+import { HdsTabs, hdsMaterial } from '@kit.UIDesignKit';
 
 /** EntryAbility publishes a notification-tap target here. */
 const OPEN_SESSION_KEY = 'aa_open_session';
@@ -112,11 +113,10 @@ struct MainTabs {
   @State activeTab: number = 0;
 
   build() {
-    // Plain `Tabs`, not `HdsTabs`: the HDS bar always paints a *system*
-    // material, which follows the system theme. On a light-mode device that is
-    // a pale bar under white labels, and `barBackgroundColor` is ignored, so it
-    // cannot be themed to match this forced-dark palette.
-    Tabs({ index: this.activeTab }) {
+    // HDS tab bar with a floating system material. This only works now that the
+    // palette follows the system theme — the material is themed by the system,
+    // so against a forced-dark UI it rendered light under white labels.
+    HdsTabs({ index: this.activeTab }) {
       TabContent() {
         Sessions()
       }
@@ -134,7 +134,15 @@ struct MainTabs {
     }
     .barPosition(BarPosition.End)
     .barMode(BarMode.Fixed)
-    .backgroundColor(Theme.bg)
+    // Content scrolls beneath the bar; each screen reserves matching clearance.
+    .barOverlap(true)
+    .barFloatingStyle({
+      barBottomMargin: 12,
+      systemMaterialEffect: {
+        materialType: hdsMaterial.MaterialType.ADAPTIVE,
+        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+      }
+    })
     .onChange((index: number) => {
       this.activeTab = index;
     })
