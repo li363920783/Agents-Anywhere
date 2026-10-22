@@ -1,8 +1,13 @@
 import http from '@ohos.net.http';
+import util from '@ohos.util';
 import { Json } from '../util/Json';
 import { ApiError } from './ApiError';
 import { Demo } from '../Demo';
 import { EmptyBody, WsTicketRequest } from '../model/Bodies';
+import { AuthRefreshRequest, AuthRefreshResponse } from '../model/Auth';
+
+/** Refresh this long before the access token's own `exp`. */
+const REFRESH_LEAD_MS = 60 * 1000;
 
 /**
  * Typed v2 HTTP client. Mirrors the iOS `V2APIClient` surface:
@@ -13,6 +18,19 @@ export class ApiClient {
   private static readonly V2 = '/api/v2';
   private baseUrl: string = '';
   private token: string = '';
+  private refreshToken: string = '';
+  /** Access-token expiry in epoch ms, read from the JWT's own `exp`. */
+  private accessExpiresAtMs: number = 0;
+  /**
+   * The in-flight refresh. Several requests can hit 401 in the same burst;
+   * with rotating refresh tokens each extra refresh would invalidate the
+   * other's, so every caller waits on the same one.
+   */
+  private refreshing: Promise<boolean> | null = null;
+  /** Persists a rotated credential pair; supplied by the session owner. */
+  private persistSession: ((access: string, refresh: string) => Promise<void>) | null = null;
+  /** Fires only when the session cannot be recovered (401/403 from refresh). */
+  private sessionExpired: (() => void) | null = null;
   private readonly req: http.HttpRequest;
 
   constructor(baseUrl: string, token: string) {
@@ -70,9 +88,133 @@ export class ApiClient {
 
   updateToken(token: string): void {
     this.token = token;
+    this.accessExpiresAtMs = ApiClient.tokenExpiryMs(token);
   }
 
-  private raw(method: http.RequestMethod, path: string, body: Object | null, auth: boolean): Promise<Object> {
+  /** Binds the credential pair and the callbacks that keep it durable. */
+  setSession(
+    accessToken: string,
+    refreshToken: string,
+    persist: ((access: string, refresh: string) => Promise<void>) | null,
+    expired: (() => void) | null,
+  ): void {
+    this.updateToken(accessToken);
+    this.refreshToken = refreshToken;
+    this.persistSession = persist;
+    this.sessionExpired = expired;
+  }
+
+  /** JWT `exp` in epoch ms, or 0 when the token is not a JWT. */
+  private static tokenExpiryMs(token: string): number {
+    const parts = token.split('.');
+    if (parts.length < 2) {
+      return 0;
+    }
+    try {
+      let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4 !== 0) {
+        b64 += '=';
+      }
+      const json = new util.TextDecoder('utf-8').decodeToString(
+        new util.Base64Helper().decodeSync(b64)
+      );
+      const exp = Json.num(Json.parse(json), 'exp');
+      return exp === null ? 0 : exp * 1000;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  private needsRefresh(): boolean {
+    if (this.refreshToken.length === 0 || this.accessExpiresAtMs === 0) {
+      return false;
+    }
+    return Date.now() >= this.accessExpiresAtMs - REFRESH_LEAD_MS;
+  }
+
+  /**
+   * Single-flight refresh. Returns true when a usable access token is in hand.
+   * Never throws: a failed refresh leaves the caller to surface the original
+   * error, and only 401/403 ends the session (a dead network must not sign the
+   * user out).
+   */
+  private async refreshSession(): Promise<boolean> {
+    if (this.refreshToken.length === 0) {
+      return false;
+    }
+    const inFlight = this.refreshing;
+    if (inFlight !== null) {
+      return inFlight;
+    }
+    const run = this.performRefresh();
+    this.refreshing = run;
+    try {
+      return await run;
+    } finally {
+      if (this.refreshing === run) {
+        this.refreshing = null;
+      }
+    }
+  }
+
+  private async performRefresh(): Promise<boolean> {
+    const body = new AuthRefreshRequest();
+    body.refreshToken = this.refreshToken;
+    try {
+      const parsed = AuthRefreshResponse.fromJson(
+        await this.send(http.RequestMethod.POST, '/auth/refresh', body, false)
+      );
+      if (parsed.accessToken.length === 0) {
+        return false;
+      }
+      // Rotation: the server may hand back a new refresh token, and the old one
+      // is dead the moment it does. Losing it here means the next refresh 401s.
+      const rotated = parsed.refreshToken.length > 0 ? parsed.refreshToken : this.refreshToken;
+      this.token = parsed.accessToken;
+      this.refreshToken = rotated;
+      this.accessExpiresAtMs = ApiClient.tokenExpiryMs(parsed.accessToken);
+      if (this.persistSession !== null) {
+        await this.persistSession(parsed.accessToken, rotated);
+      }
+      return true;
+    } catch (e) {
+      const err = e as Error;
+      if (err instanceof ApiError && (err.httpCode === 401 || err.httpCode === 403)) {
+        this.refreshToken = '';
+        if (this.sessionExpired !== null) {
+          this.sessionExpired();
+        }
+      }
+      return false;
+    }
+  }
+
+  /**
+   * Request policy over `send`: refresh a token that is about to expire, and
+   * on a 401 refresh once and replay. Anything else passes through unchanged,
+   * so callers still see the original ApiError.
+   */
+  private async raw(method: http.RequestMethod, path: string, body: Object | null, auth: boolean): Promise<Object> {
+    if (auth && this.needsRefresh()) {
+      await this.refreshSession();
+    }
+    try {
+      return await this.send(method, path, body, auth);
+    } catch (e) {
+      const err = e as Error;
+      const apiErr = err instanceof ApiError ? err as ApiError : null;
+      if (!auth || apiErr === null || apiErr.httpCode !== 401) {
+        throw err;
+      }
+      const recovered = await this.refreshSession();
+      if (!recovered) {
+        throw err;
+      }
+      return await this.send(method, path, body, auth);
+    }
+  }
+
+  private send(method: http.RequestMethod, path: string, body: Object | null, auth: boolean): Promise<Object> {
     if (Demo.on() && method !== http.RequestMethod.GET) {
       // The sample account has no server behind it. Fail here, immediately,
       // rather than after a timeout — the callers already surface the message.

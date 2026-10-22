@@ -156,7 +156,10 @@ export struct Login {
       const ex = await ApiClient.shared.post('/auth/mobile-login/exchange', exBody, false);
       const user = AuthUser.fromJson(Json.obj(ex, 'auth'));
       const token = Json.strOr(Json.obj(ex, 'auth'), 'accessToken', '');
-      await AppState.shared.signIn(server, token, user);
+      // The long-lived credential. Kept so an expiring access token can be
+      // renewed instead of bouncing the user back to this screen.
+      const refreshToken = Json.strOr(ex, 'refreshToken', '');
+      await AppState.shared.signIn(server, token, user, refreshToken);
       this.qrOpen = false;
       this.toast('QR login complete');
     } catch (e) {

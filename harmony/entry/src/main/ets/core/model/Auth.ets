@@ -63,6 +63,33 @@ export class AuthResponse {
   }
 }
 
+/**
+ * Redeems a refresh token for a new access token.
+ *
+ * The server endpoint does not exist yet (tracked with 老四). The client is
+ * written against the shape below and tolerates a response that omits
+ * `refreshToken` — in that case the current one is kept, which is what a
+ * non-rotating server returns.
+ */
+export class AuthRefreshRequest {
+  refreshToken: string = '';
+}
+
+export class AuthRefreshResponse {
+  accessToken: string = '';
+  /** Present only when the server rotates; empty means "keep the old one". */
+  refreshToken: string = '';
+  expiresAt: string = '';
+
+  static fromJson(o: Object | null): AuthRefreshResponse {
+    const m = new AuthRefreshResponse();
+    m.accessToken = Json.strOr(o, 'accessToken', '');
+    m.refreshToken = Json.strOr(o, 'refreshToken', '');
+    m.expiresAt = Json.strOr(o, 'expiresAt', '');
+    return m;
+  }
+}
+
 export class MobileLoginStatusResponse {
   status: string = 'expired';
 

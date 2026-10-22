@@ -17,6 +17,8 @@ export class AppState {
 
   serverUrl: string = '';
   token: string = '';
+  /** Long-lived credential; redeemed at `/auth/refresh` to avoid a re-login. */
+  refreshToken: string = '';
   user: AuthUser | null = null;
   restoring: boolean = false;
   /** Sample-data mode: signed in, but with no server and no token. */
@@ -63,9 +65,12 @@ export class AppState {
         ApiClient.configure(this.serverUrl, '');
       }
       const token = await TokenVault.load();
+      const refresh = await TokenVault.loadRefresh();
       if (token !== null && this.serverUrl.length > 0) {
         this.token = token;
+        this.refreshToken = refresh ?? '';
         ApiClient.configure(this.serverUrl, token);
+        this.bindSessionHooks();
         if (!Demo.on()) {
           const me = await ApiClient.shared.get('/auth/me').catch(() => null);
           if (me !== null) {
@@ -87,9 +92,10 @@ export class AppState {
   }
 
   /** Persists a fresh sign-in and rebinds the HTTP client. */
-  async signIn(serverUrl: string, token: string, user: AuthUser): Promise<void> {
+  async signIn(serverUrl: string, token: string, user: AuthUser, refreshToken: string = ''): Promise<void> {
     this.serverUrl = ApiClient.normalizeBase(serverUrl);
     this.token = token;
+    this.refreshToken = refreshToken;
     this.user = user;
     Prefs.putString(Prefs.keys.serverUrl, this.serverUrl);
     Prefs.putString(Prefs.keys.userId, user.userId);
@@ -99,14 +105,40 @@ export class AppState {
     }
     Prefs.putString(Prefs.keys.role, user.role);
     await TokenVault.save(token);
+    if (refreshToken.length > 0) {
+      await TokenVault.saveRefresh(refreshToken);
+    }
     ApiClient.configure(this.serverUrl, token);
+    this.bindSessionHooks();
     // Index gates Login vs MainTabs on this key; without it the UI stays on Login.
     AppStorage.setOrCreate('aa_signed_in', true);
     DashboardWatcher.shared.start();
   }
 
+  /**
+   * Hands the client the callbacks that keep the credential durable. Called
+   * after every `configure()`, since that builds a fresh ApiClient whose
+   * session state starts empty.
+   */
+  private bindSessionHooks(): void {
+    ApiClient.shared.setSession(
+      this.token,
+      this.refreshToken,
+      async (access: string, refresh: string): Promise<void> => {
+        this.token = access;
+        this.refreshToken = refresh;
+        await TokenVault.save(access);
+        await TokenVault.saveRefresh(refresh);
+      },
+      () => {
+        void this.signOut();
+      },
+    );
+  }
+
   async signOut(): Promise<void> {
     this.token = '';
+    this.refreshToken = '';
     this.user = null;
     this.demo = false;
     Demo.exit();
