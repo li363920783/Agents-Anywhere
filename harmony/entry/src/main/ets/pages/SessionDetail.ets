@@ -864,9 +864,6 @@ export struct SessionDetail {
       Stack({ alignContent: Alignment.BottomEnd }) {
         Scroll(this.scroller) {
           Column({ space: 10 }) {
-            ForEach(this.notices, (n: Notice) => {
-              this.NoticeCard(n)
-            }, (n: Notice) => n.noticeId)
             ForEach(this.items, (item: TimelineItem) => {
               // The wrapper exists for the transition: a @Builder call cannot
               // take modifiers, and every new item — optimistic or streamed —
@@ -969,6 +966,19 @@ export struct SessionDetail {
             .fontSize(Theme.fontTiny)
             .fontColor(Theme.muted)
           Blank().layoutWeight(1)
+        }
+        .width(Theme.gutter)
+        .padding({ top: 8 })
+      }
+
+      // Prompts sit above the composer, not at the top of the timeline. The
+      // answer is needed *now*, and a long history buries the card off-screen:
+      // the session sat in Waiting with no reachable way to reply.
+      if (this.notices.length > 0) {
+        Column({ space: 8 }) {
+          ForEach(this.notices, (n: Notice) => {
+            this.NoticeCard(n)
+          }, (n: Notice) => n.noticeId)
         }
         .width(Theme.gutter)
         .padding({ top: 8 })
@@ -1155,6 +1165,21 @@ export struct SessionDetail {
     const path = Json.str(input, 'file_path') ?? Json.str(input, 'path');
     if (path !== null && path.length > 0) {
       return path;
+    }
+    // AskUserQuestion's payload is a JSON blob; the prompts are what a reader
+    // wants, and the raw blob only helps when expanded.
+    const questions = Json.arr(input, 'questions');
+    if (questions !== null && questions.length > 0) {
+      const prompts: Array<string> = [];
+      for (let i = 0; i < questions.length; i++) {
+        const prompt = Json.str(questions[i], 'question');
+        if (prompt !== null && prompt.length > 0) {
+          prompts.push(prompt);
+        }
+      }
+      if (prompts.length > 0) {
+        return prompts.join(' / ');
+      }
     }
     return ToolContent.inputText(item.content).replace(/\s+/g, ' ').trim();
   }
