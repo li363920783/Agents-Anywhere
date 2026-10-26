@@ -328,9 +328,11 @@ def is_synthetic_control_message(message: Any) -> bool:
     if text is None:
         return False
     normalized = text.strip()
-    if normalized.startswith("<task-notification>") and normalized.endswith(
-        "</task-notification>"
-    ):
+    if normalized.startswith("<task-notification>"):
+        # Start-only: Claude Code appends a trailing <system-reminder> block
+        # after the notification, so requiring the text to *end* with
+        # </task-notification> matched nothing and the raw XML reached every
+        # client. A real user message never begins with the literal tag.
         return True
     if role == "user" and normalized in CLAUDE_INTERRUPTED_REQUEST_MARKERS:
         return True

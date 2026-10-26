@@ -12,7 +12,10 @@ from connector.runtimes.claude.sdk.client import (
     build_sdk_options,
     claude_sdk_environment,
 )
-from connector.runtimes.claude.sdk.settings import claude_user_settings_environment
+from connector.runtimes.claude.sdk.settings import (
+    claude_user_credentials_environment,
+    claude_user_settings_environment,
+)
 
 
 def test_claude_sdk_buffer_handles_25_mib_image_read_result() -> None:
@@ -71,6 +74,31 @@ def test_claude_user_settings_environment_tolerates_absent_or_invalid_file(
     assert claude_user_settings_environment(str(empty_env)) == {}
 
 
+def test_claude_user_credentials_environment_reads_gateway_credentials(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://example.invalid/go",
+                    "ANTHROPIC_API_KEY": "oc_sk_redacted",
+                    "ANTHROPIC_AUTH_TOKEN": "tok-redacted",
+                    "ANTHROPIC_MODEL": "example-model-a",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert claude_user_credentials_environment(str(path)) == {
+        "ANTHROPIC_BASE_URL": "https://example.invalid/go",
+        "ANTHROPIC_API_KEY": "oc_sk_redacted",
+        "ANTHROPIC_AUTH_TOKEN": "tok-redacted",
+    }
+
+
 def test_claude_sdk_environment_lets_runtime_config_override_user_settings(
     monkeypatch,
 ) -> None:
@@ -82,6 +110,11 @@ def test_claude_sdk_environment_lets_runtime_config_override_user_settings(
             "ANTHROPIC_DEFAULT_OPUS_MODEL": "example-model-b",
         },
     )
+    monkeypatch.setattr(
+        claude_settings,
+        "claude_user_credentials_environment",
+        lambda path=None: {},
+    )
 
     environment = claude_sdk_environment(
         {"environment": {"ANTHROPIC_MODEL": "runtime-model"}}
@@ -90,6 +123,35 @@ def test_claude_sdk_environment_lets_runtime_config_override_user_settings(
     assert environment == {
         "ANTHROPIC_MODEL": "runtime-model",
         "ANTHROPIC_DEFAULT_OPUS_MODEL": "example-model-b",
+    }
+
+
+def test_claude_sdk_environment_forwards_credentials_and_model_gateway_wins(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        claude_settings,
+        "claude_user_settings_environment",
+        lambda path=None: {"ANTHROPIC_MODEL": "example-model-a"},
+    )
+    monkeypatch.setattr(
+        claude_settings,
+        "claude_user_credentials_environment",
+        lambda path=None: {
+            "ANTHROPIC_BASE_URL": "https://cc-switch.invalid/go",
+            "ANTHROPIC_API_KEY": "oc_sk_cc",
+        },
+    )
+
+    environment = claude_sdk_environment(
+        {"modelGateway": {"baseUrl": "https://gateway.invalid/v1", "apiKey": "gw-key"}}
+    )
+
+    assert environment == {
+        "ANTHROPIC_MODEL": "example-model-a",
+        "ANTHROPIC_BASE_URL": "https://gateway.invalid/v1",
+        "ANTHROPIC_AUTH_TOKEN": "gw-key",
+        "ANTHROPIC_API_KEY": "",
     }
 
 

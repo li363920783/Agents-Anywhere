@@ -126,10 +126,11 @@ def build_sdk_options(
 def claude_sdk_environment(config_values: Mapping[str, Any]) -> dict[str, Any]:
     """Build explicit environment overrides for one Claude SDK subprocess."""
 
-    # The user's Claude Code settings remap model aliases to third-party
-    # models; the SDK subprocess does not read that file, so forward the model
-    # names. Runtime config still wins, and credentials stay untouched.
+    # The SDK subprocess does not read ~/.claude/settings.json, so forward the
+    # model aliases and API-key credentials a provider switcher (cc-switch)
+    # wrote there. Runtime config (environment / modelGateway) still overrides.
     environment: dict[str, Any] = settings.claude_user_settings_environment()
+    environment.update(settings.claude_user_credentials_environment())
     configured_environment = config_values.get("environment")
     if isinstance(configured_environment, Mapping):
         environment.update(configured_environment)

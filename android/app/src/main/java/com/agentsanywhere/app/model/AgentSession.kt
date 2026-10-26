@@ -8,6 +8,7 @@ data class AgentSession(
     val title: String,
     val summary: String,
     val cwd: String?,
+    val gitBranch: String?,
     val workspaceLabel: String,
     val runtime: String,
     val runtimeLabel: String,

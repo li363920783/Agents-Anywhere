@@ -671,6 +671,7 @@ class SessionsApi(
             externalSessionId = optNullableString("externalSessionId"),
             title = optNullableString("title"),
             cwd = optNullableString("cwd"),
+            gitBranch = optNullableString("gitBranch"),
             status = optString("status", "idle"),
             takeover = optBoolean("takeover", false),
             pinned = optBoolean("pinned", false),

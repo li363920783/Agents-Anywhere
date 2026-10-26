@@ -61,3 +61,22 @@ def test_create_session_caps_prompt_sized_client_title(tmp_path) -> None:
     assert stored[3] == "Short title"
     assert stored[4] is None
     assert stored[5] is None
+
+
+def test_create_session_drops_resume_preamble_and_pasted_payload(tmp_path) -> None:
+    stored = _create_titles(
+        tmp_path,
+        [
+            "Below is a conversation log from a Claude Code coding session. Create a summary...",
+            "以下是一段来自 Claude Code 的对话记录",
+            'You previously flagged these candidate vulnerabilities: [ { "filePath": "a/b.java" } ]',
+            "Review this change.\n```diff\n+x\n```",
+        ],
+    )
+
+    # A `--resume` / compaction preamble is the first user message, not a name.
+    assert stored[0] is None
+    assert stored[1] is None
+    # A templated prompt keeps its pasted payload out of the name.
+    assert stored[2] == "You previously flagged these candidate vulnerabi..."
+    assert stored[3] == "Review this change"

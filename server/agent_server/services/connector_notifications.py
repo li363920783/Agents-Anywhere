@@ -659,7 +659,11 @@ class SessionStateNotificationHandler:
         return IngestEffect(
             session_id=session_id,
             runtime_state=runtime_state,
-            dashboard_changed=created,
+            # The list's status chip and the "running" facet read the dashboard
+            # snapshot, so a status transition has to dirty it. Only marking a
+            # new session left every row frozen at whatever it had when the
+            # client connected.
+            dashboard_changed=created or session.status != runtime_state["status"],
         )
 
 

@@ -384,10 +384,12 @@ async def _test_claude_runtime_starts_turn_and_projects_timeline() -> None:
         "assistant",
         "assistant",
     ]
+    # Sending stays available while a turn runs: the runtime queues one message
+    # (turns/actions.py) instead of refusing it. Only interrupt tracks the turn.
     assert [
         _capability_available(capabilities, "session.send_message")
         for capabilities in host.session_capability_updates
-    ] == [False, False, True]
+    ] == [True, True, True]
     assert [
         _capability_available(capabilities, "session.interrupt")
         for capabilities in host.session_capability_updates
@@ -3257,7 +3259,8 @@ async def _test_claude_runtime_interrupts_active_turn() -> None:
             await runtime.get_session_capabilities("sess_interrupt")
         ).capabilities
     }
-    assert active_capabilities["session.send_message"].available is False
+    # A send during a turn is queued, not refused.
+    assert active_capabilities["session.send_message"].available is True
     assert active_capabilities["session.interrupt"].available is True
 
     task = runtime._sessions["sess_interrupt"].active_task
@@ -5476,3 +5479,69 @@ async def _wait_until(predicate: Any) -> None:
             return
         await asyncio.sleep(0)
     assert predicate()
+
+
+def test_session_title_drops_resume_preamble_and_pasted_payload() -> None:
+    from connector.runtimes.claude.sessions.reader import (
+        _clean_session_title,
+        _session_title,
+    )
+
+    # A `--resume` / compaction preamble is the first user message, not a name.
+    assert _clean_session_title(
+        "Below is a conversation log from a Claude Code coding session. Create a summary..."
+    ) is None
+    assert _clean_session_title("以下是一段来自 Claude Code 的对话记录") is None
+
+    # Templated prompts keep their pasted JSON payload out of the name.
+    assert _clean_session_title(
+        'You previously flagged these candidate vulnerabilities: [ { "filePath": "a/b.java" } ]'
+    ) == "You previously flagged these candidate vulnerabi..."
+    assert _clean_session_title('Review this change.\n```diff\n+x\n```') == "Review this change"
+
+    # Whitespace collapses and long titles are cut to the shared limit.
+    assert _clean_session_title("  spaced   out  title ") == "spaced out title"
+    assert _clean_session_title("x" * 80) == f"{'x' * 48}..."
+    assert _clean_session_title("   ") is None
+    assert _clean_session_title(None) is None
+
+    # A preamble in the preferred attribute does not shadow a usable fallback.
+    session = SimpleNamespace(
+        custom_title="Below is a conversation log from an earlier session",
+        first_prompt="Fix the login redirect",
+    )
+    assert _session_title(session) == "Fix the login redirect"
+
+
+def test_task_notification_with_trailing_reminder_is_synthetic() -> None:
+    """Claude Code appends a <system-reminder> block after the notification.
+
+    Requiring the text to *end* with </task-notification> missed exactly that
+    shape, so the raw XML was projected as a normal user turn and every client
+    rendered the tags verbatim.
+    """
+    from connector.runtimes.claude.timeline.messages import is_synthetic_control_message
+
+    message = SimpleNamespace(
+        type="user",
+        content=[
+            {
+                "type": "text",
+                "text": (
+                    "<task-notification><status>stopped</status></task-notification>\n"
+                    "<system-reminder>background task finished</system-reminder>"
+                ),
+            }
+        ],
+    )
+    assert is_synthetic_control_message(message)
+
+
+def test_ordinary_user_text_mentioning_the_tag_is_not_synthetic() -> None:
+    from connector.runtimes.claude.timeline.messages import is_synthetic_control_message
+
+    message = SimpleNamespace(
+        type="user",
+        content=[{"type": "text", "text": "why did <task-notification> show up raw?"}],
+    )
+    assert not is_synthetic_control_message(message)

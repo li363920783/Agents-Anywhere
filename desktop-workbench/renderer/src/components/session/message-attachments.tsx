@@ -39,9 +39,11 @@ import {
 import { dashboardApi } from "@/features/dashboard/api"
 import type { SessionView } from "@/features/dashboard/types"
 import { apiUrl } from "@/lib/api"
+import { downloadBlob } from "@/lib/download"
 import { openNativeFilePreviewWindow } from "@/lib/file-preview-window"
 import { cn } from "@/lib/utils"
 import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 
 type MessageAttachmentsProps = {
   token: string
@@ -144,6 +146,7 @@ function MessageAttachmentItem({
   onImageReady: (image: PreviewImage) => void
   onPreview: (image: PreviewImage) => void
 }) {
+  const t = useTranslations("dashboard.new")
   const name = attachment.name || attachment.fileId
   const mediaType = attachment.mediaType || ""
   const sessionAttachmentUrl = attachmentUrl?.(attachment.fileId)
@@ -164,6 +167,21 @@ function MessageAttachmentItem({
   const resolvedMediaType = deviceFile.mediaType || mediaType
   const resolvedSize = deviceFile.size ?? attachment.size
   const isImage = attachmentIsImage(resolvedName, resolvedMediaType)
+  const downloadUrl = attachment.downloadUrl
+    ? apiUrl(attachment.downloadUrl)
+    : sourceUrl
+  const downloadAttachment = downloadUrl
+    ? async () => {
+        try {
+          const blob = await dashboardApi.downloadBlob(token, downloadUrl)
+          downloadBlob(blob, resolvedName)
+        } catch (error) {
+          toast.error(t("downloadFailed"), {
+            description: error instanceof Error ? error.message : undefined,
+          })
+        }
+      }
+    : undefined
   const previewTarget = attachment.path || openUrl
     ? {
         source: "attachment" as const,
@@ -255,6 +273,7 @@ function MessageAttachmentItem({
       name={resolvedName}
       mediaType={resolvedMediaType}
       onOpen={openAttachmentPreview ?? undefined}
+      onDownload={downloadAttachment}
       size={resolvedSize}
     />
   )
@@ -699,6 +718,7 @@ function FileAttachment({
   name,
   mediaType,
   onOpen,
+  onDownload,
   size,
   state = "done",
   statusText,
@@ -707,6 +727,7 @@ function FileAttachment({
   name: string
   mediaType: string
   onOpen?: () => void
+  onDownload?: () => void
   size?: number
   state?: "uploading" | "error" | "done"
   statusText?: string
@@ -725,14 +746,21 @@ function FileAttachment({
           {[details, pending ? "Pending" : null, statusText].filter(Boolean).join(" · ")}
         </AttachmentDescription>
       </AttachmentContent>
-      {onOpen ? (
+      {(onOpen || onDownload) ? (
         <>
           <AttachmentActions>
-            <AttachmentAction aria-label={`Open ${name}`} onClick={onOpen}>
-              <ExternalLink />
-            </AttachmentAction>
+            {onOpen ? (
+              <AttachmentAction aria-label={`Open ${name}`} onClick={onOpen}>
+                <ExternalLink />
+              </AttachmentAction>
+            ) : null}
+            {onDownload ? (
+              <AttachmentAction aria-label={`Download ${name}`} onClick={onDownload}>
+                <Download />
+              </AttachmentAction>
+            ) : null}
           </AttachmentActions>
-          <AttachmentTrigger aria-label={`Open ${name}`} onClick={onOpen} />
+          {onOpen ? <AttachmentTrigger aria-label={`Open ${name}`} onClick={onOpen} /> : null}
         </>
       ) : null}
     </Attachment>

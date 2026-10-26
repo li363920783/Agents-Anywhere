@@ -1,0 +1,48 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#000000"
+    },
+    {
+      "name": "ink_primary",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "ink_secondary",
+      "value": "#8A8A8E"
+    },
+    {
+      "name": "surface",
+      "value": "#000000"
+    },
+    {
+      "name": "surface_card",
+      "value": "#1C1C1E"
+    },
+    {
+      "name": "hairline",
+      "value": "#2C2C2E"
+    },
+    {
+      "name": "bubble_user",
+      "value": "#0A84FF"
+    },
+    {
+      "name": "bubble_assistant",
+      "value": "#1C1C1E"
+    },
+    {
+      "name": "status_ok",
+      "value": "#30D158"
+    },
+    {
+      "name": "status_warn",
+      "value": "#FF9F0A"
+    },
+    {
+      "name": "status_error",
+      "value": "#FF453A"
+    }
+  ]
+}

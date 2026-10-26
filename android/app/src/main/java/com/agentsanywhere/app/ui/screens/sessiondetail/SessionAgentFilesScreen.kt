@@ -1,6 +1,13 @@
 package com.agentsanywhere.app.ui.screens.sessiondetail
 
+import android.content.ContentValues
+import android.content.Context
 import android.graphics.Typeface
+import android.os.Build
+import android.provider.MediaStore
+import android.widget.Toast
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -105,6 +112,7 @@ import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.ChevronRight
 import com.composables.icons.lucide.ChevronUp
 import com.composables.icons.lucide.Copy
+import com.composables.icons.lucide.Download
 import com.composables.icons.lucide.FileCode
 import com.composables.icons.lucide.FileText
 import com.composables.icons.lucide.Folder
@@ -1094,6 +1102,7 @@ private fun PreviewCard(
     modifier: Modifier = Modifier,
 ) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var copied by remember(file.path) { mutableStateOf(false) }
     val cardBackground = if (darkMode) Color(0xFF09090B) else Color.White
@@ -1119,6 +1128,21 @@ private fun PreviewCard(
                     scope.launch {
                         delay(1100)
                         copied = false
+                    }
+                }
+            },
+            downloadEnabled = preview?.let { !it.binary && it.content.isNotBlank() } == true,
+            onDownload = {
+                val content = preview?.content.orEmpty()
+                if (content.isNotBlank()) {
+                    scope.launch {
+                        saveTextToDownloads(context, file.name, content)
+                            .onSuccess {
+                                Toast.makeText(context, context.getString(R.string.files_download_saved), Toast.LENGTH_SHORT).show()
+                            }
+                            .onFailure { failure ->
+                                Toast.makeText(context, failure.message ?: "Download failed", Toast.LENGTH_SHORT).show()
+                            }
                     }
                 }
             },
@@ -1159,6 +1183,38 @@ private fun PreviewCard(
     }
 }
 
+private suspend fun saveTextToDownloads(
+    context: Context,
+    name: String,
+    content: String,
+): Result<Unit> = withContext(Dispatchers.IO) {
+    runCatching {
+        val displayName = name
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .ifBlank { "agents-anywhere-${System.currentTimeMillis()}" }
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+            put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+        }
+        val resolver = context.contentResolver
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        }
+        val uri = resolver.insert(collection, values) ?: error("Unable to create download")
+        try {
+            resolver.openOutputStream(uri, "w")?.use { out -> out.write(content.toByteArray()) }
+                ?: error("Unable to open download")
+        } catch (failure: Throwable) {
+            resolver.delete(uri, null, null)
+            throw failure
+        }
+    }
+}
+
 @Composable
 private fun PreviewCardHeader(
     fileName: String,
@@ -1167,6 +1223,8 @@ private fun PreviewCardHeader(
     copyEnabled: Boolean,
     onToggleSearch: () -> Unit,
     onCopy: () -> Unit,
+    downloadEnabled: Boolean = false,
+    onDownload: () -> Unit = {},
 ) {
     val background = if (darkMode) LocalAAColors.current.raisedSurface else Color.White
     val text = if (darkMode) Color(0xFFFAFAFA) else Color(0xFF111111)
@@ -1211,6 +1269,15 @@ private fun PreviewCardHeader(
                 stringResource(R.string.files_copy_code)
             },
             onClick = onCopy,
+        )
+        PreviewIconButton(
+            icon = Lucide.Download,
+            darkMode = darkMode,
+            background = buttonBackground,
+            border = buttonBorder,
+            enabled = downloadEnabled,
+            contentDescription = stringResource(R.string.files_download_file),
+            onClick = onDownload,
         )
     }
 }

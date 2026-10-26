@@ -813,7 +813,7 @@ private fun markdownStyles(darkMode: Boolean, compact: Boolean): MarkdownStyles 
         border = border,
         codeBackground = if (darkMode) LocalAAColors.current.subtle else Color(0xFFF1F0ED),
         codeBorder = if (darkMode) Color(0xFF27272A) else Color(0xFFE4E1DB),
-        linkColor = Color(0xFFEBB353),
+        linkColor = if (darkMode) Color(0xFF60A5FA) else Color(0xFF2563EB),
         body = TextStyle(
             color = body,
             fontSize = if (compact) 14.sp else 17.sp,

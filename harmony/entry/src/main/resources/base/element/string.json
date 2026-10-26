@@ -1,0 +1,40 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Agents Anywhere mobile control client"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Agents Anywhere control client"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Agents Anywhere"
+    },
+    {
+      "name": "page_index",
+      "value": "Agents Anywhere"
+    },
+    {
+      "name": "page_login",
+      "value": "Connect server"
+    },
+    {
+      "name": "page_sessions",
+      "value": "Sessions"
+    },
+    {
+      "name": "page_session_detail",
+      "value": "Session"
+    },
+    {
+      "name": "page_devices",
+      "value": "Devices"
+    },
+    {
+      "name": "page_settings",
+      "value": "Settings"
+    }
+  ]
+}

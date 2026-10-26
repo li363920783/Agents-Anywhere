@@ -166,6 +166,7 @@ export function SessionViewHeader({
                 {session.title}
               </button>
             )}
+            <BranchBadge branch={session.gitBranch} />
             {metaBadge}
           </div>,
           desktopPortalTargets.session,
@@ -241,12 +242,22 @@ export function SessionViewHeader({
             {session.title}
           </button>
         )}
+        <BranchBadge branch={session.gitBranch} />
       </div>
       {metaBadge}
       <div className="ml-auto flex items-center gap-1">
         <MobileFilesButton />
       </div>
     </WorkspaceHeader>
+  )
+}
+
+function BranchBadge({ branch }: { branch?: string | null }) {
+  if (!branch) return null
+  return (
+    <span className="aa-window-no-drag min-w-0 shrink-0 truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+      {branch}
+    </span>
   )
 }
 

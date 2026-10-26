@@ -643,6 +643,16 @@ export function FilePreviewSurface({
               >
                 <ExternalLink className="size-4" />
               </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                type="button"
+                aria-label={t("download")}
+                disabled={state.kind !== "text" && state.kind !== "binary"}
+                onClick={() => void handleDownload()}
+              >
+                <Download className="size-4" />
+              </Button>
               <Label
                 htmlFor={embeddedEditModeId}
                 className={cn(
