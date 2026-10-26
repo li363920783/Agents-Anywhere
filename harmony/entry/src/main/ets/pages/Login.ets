@@ -298,6 +298,21 @@ export struct Login {
           .borderRadius(10)
           .opacity(this.busy ? 0.5 : 1)
           .onClick(() => this.signIn())
+        // Sits directly under Sign in, not at the bottom of the form: a
+        // reviewer who cannot sign in never scrolls past it, and the first
+        // submission was rejected with "no demo login available".
+        Button('演示模式 · 免账号体验')
+          .height(44)
+          .width('100%')
+          .fontSize(Theme.fontBody)
+          .fontWeight(FontWeight.Medium)
+          .backgroundColor(Theme.accentTint)
+          .fontColor(Theme.accent)
+          .border({ width: 1, color: Theme.accent })
+          .borderRadius(10)
+          .onClick(() => {
+            AppState.shared.enterDemo();
+          })
         Button(this.qrOpen ? 'Hide QR login' : 'QR login (paste payload)')
           .height(40)
           .width('100%')
@@ -309,20 +324,6 @@ export struct Login {
           .borderRadius(10)
           .onClick(() => {
             this.qrOpen = !this.qrOpen;
-          })
-        // Reviewers, and anyone evaluating the app, need a way in without an
-        // account. Everything behind it is sample data and is labelled as such.
-        Button('演示模式 · 免账号体验')
-          .height(40)
-          .width('100%')
-          .fontSize(Theme.fontTiny)
-          .backgroundColor(Theme.raised)
-          .fontColor(Theme.accent)
-          .border({ width: 1, color: Theme.accentTint })
-          .borderRadius(10)
-          .margin({ top: 10 })
-          .onClick(() => {
-            AppState.shared.enterDemo();
           })
         if (this.qrOpen) {
           TextArea({ placeholder: '{"serverUrl":…,"userId":"…","loginToken":"…"}', text: this.qrText })
