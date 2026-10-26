@@ -80,8 +80,14 @@ def claude_session_capabilities(
                 session_id=session_id,
                 connector_id=context.connector_id,
                 supported=True,
-                available=not active,
-                unavailable_reason="turn_active" if active else None,
+                # A running turn does not block a send: `turns/actions.py` parks
+                # one message on `queued_content` and starts it when the current
+                # turn finishes. Advertising it as unavailable while active made
+                # the server reject every send with "session capability is
+                # unavailable: session.send_message", so queueing was
+                # unreachable from any client.
+                available=True,
+                unavailable_reason=None,
                 metadata={"source": "claude.runtime"},
             ),
             RuntimeCapability(

@@ -384,10 +384,12 @@ async def _test_claude_runtime_starts_turn_and_projects_timeline() -> None:
         "assistant",
         "assistant",
     ]
+    # Sending stays available while a turn runs: the runtime queues one message
+    # (turns/actions.py) instead of refusing it. Only interrupt tracks the turn.
     assert [
         _capability_available(capabilities, "session.send_message")
         for capabilities in host.session_capability_updates
-    ] == [False, False, True]
+    ] == [True, True, True]
     assert [
         _capability_available(capabilities, "session.interrupt")
         for capabilities in host.session_capability_updates
@@ -3257,7 +3259,8 @@ async def _test_claude_runtime_interrupts_active_turn() -> None:
             await runtime.get_session_capabilities("sess_interrupt")
         ).capabilities
     }
-    assert active_capabilities["session.send_message"].available is False
+    # A send during a turn is queued, not refused.
+    assert active_capabilities["session.send_message"].available is True
     assert active_capabilities["session.interrupt"].available is True
 
     task = runtime._sessions["sess_interrupt"].active_task
