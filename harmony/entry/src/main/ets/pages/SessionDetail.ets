@@ -552,9 +552,9 @@ export struct SessionDetail {
     }
   }
 
-  /** Idle: just send. Running: the caller picks how (queue / interrupt / steer). */
+  /** Idle sessions only have one meaning for a message. */
   private async send(): Promise<void> {
-    await this.sendVia(this.takeover && Fmt.statusLive(this.currentStatus()) ? 'steer' : 'messages');
+    await this.sendVia('messages');
   }
 
   /**
@@ -1063,10 +1063,21 @@ export struct SessionDetail {
             this.composer = v;
           })
         if (Fmt.statusLive(this.currentStatus())) {
-          // While a turn runs, a message has three distinct meanings. Picking
-          // one is the user's call — before this the only path was `steer`, so
-          // there was no way to queue or to stop and send.
-          Button('发送…')
+          // Two visible actions instead of a menu: while a turn runs, "wait for
+          // the current turn" and "stop it and go now" are both one tap, and
+          // neither is hidden behind a long-press nobody discovers.
+          Button('打断并发送')
+            .height(42)
+            .fontSize(Theme.fontTiny)
+            .fontColor(Theme.danger)
+            .backgroundColor(Theme.raised)
+            .borderRadius(Theme.radiusPill)
+            .enabled(!this.busy && this.connected)
+            .opacity(!this.busy && this.connected ? 1 : 0.4)
+            .onClick(() => {
+              void this.interruptAndSend();
+            })
+          Button('排队')
             .height(42)
             .fontSize(Theme.fontSmall)
             .fontWeight(FontWeight.Medium)
@@ -1075,26 +1086,9 @@ export struct SessionDetail {
             .fontColor(Theme.onAccent)
             .borderRadius(Theme.radiusPill)
             .opacity(!this.busy && this.connected ? 1 : 0.4)
-            .bindMenu([
-              {
-                value: '排队发送（本轮结束后执行）',
-                action: () => {
-                  void this.sendVia('messages');
-                }
-              },
-              {
-                value: '打断并发送',
-                action: () => {
-                  void this.interruptAndSend();
-                }
-              },
-              {
-                value: '插入当前回合',
-                action: () => {
-                  void this.sendVia('steer');
-                }
-              }
-            ])
+            .onClick(() => {
+              void this.sendVia('messages');
+            })
         } else {
           Button('Send')
             .height(42)
