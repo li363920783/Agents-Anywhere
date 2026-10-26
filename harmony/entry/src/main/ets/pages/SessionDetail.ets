@@ -70,6 +70,10 @@ export struct SessionDetail {
    *  are noise until you actually want to read them. */
   @State expandedTools: Array<string> = [];
   private stream: RealtimeStream | null = null;
+  /** Reconnect backoff; the composer is gated on `connected`, so a dead stream
+   *  silently turns the page read-only. */
+  private retryTimer: number = -1;
+  private retryDelayMs: number = 2000;
   private scroller: Scroller = new Scroller();
 
   aboutToAppear(): void {
@@ -81,6 +85,7 @@ export struct SessionDetail {
   }
 
   aboutToDisappear(): void {
+    this.clearReconnect();
     this.stream?.stop();
     this.stream = null;
     // Keep suppressing for a moment: `unread` is derived from seq vs last-read,
@@ -432,12 +437,15 @@ export struct SessionDetail {
     const cb = new RealtimeCallbacks();
     cb.onOpen = () => {
       this.connected = true;
+      this.retryDelayMs = 2000;
     };
     cb.onClose = () => {
       this.connected = false;
+      this.scheduleReconnect();
     };
     cb.onError = (msg: string) => {
       this.connected = false;
+      this.scheduleReconnect();
     };
     cb.onText = (text: string) => {
       this.applyFrame(text);
@@ -446,7 +454,33 @@ export struct SessionDetail {
     this.stream = stream;
     stream.start(util.generateRandomUUID()).catch((e: Error) => {
       this.connected = false;
+      this.scheduleReconnect();
     });
+  }
+
+  /**
+   * The stream dies when the connector restarts or the app has been backgrounded
+   * long enough. Everything the composer offers is gated on `connected`, so
+   * without a retry the page goes silently read-only until it is left and
+   * re-entered.
+   */
+  private scheduleReconnect(): void {
+    if (this.retryTimer !== -1) {
+      return;
+    }
+    const delay = this.retryDelayMs;
+    this.retryDelayMs = Math.min(this.retryDelayMs * 2, 30000);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = -1;
+      this.connectStream();
+    }, delay);
+  }
+
+  private clearReconnect(): void {
+    if (this.retryTimer !== -1) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = -1;
+    }
   }
 
   private applyFrame(text: string): void {
