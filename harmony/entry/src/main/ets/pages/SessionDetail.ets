@@ -552,9 +552,31 @@ export struct SessionDetail {
     }
   }
 
+  /** Idle: just send. Running: the caller picks how (queue / interrupt / steer). */
   private async send(): Promise<void> {
+    await this.sendVia(this.takeover && Fmt.statusLive(this.currentStatus()) ? 'steer' : 'messages');
+  }
+
+  /**
+   * Every send path — queue, steer, interrupt — is rejected by the server
+   * until the session is taken over, so the toggle is a prerequisite rather
+   * than a preference. Turning it on here beats failing with a 409 the user
+   * cannot act on.
+   */
+  private async ensureTakeover(): Promise<boolean> {
+    if (this.takeover) {
+      return true;
+    }
+    await this.setTakeover(true);
+    return this.takeover;
+  }
+
+  private async sendVia(endpoint: string): Promise<void> {
     const content = this.composer.trim();
     if (content.length === 0) {
+      return;
+    }
+    if (!await this.ensureTakeover()) {
       return;
     }
     this.busy = true;
@@ -594,13 +616,6 @@ export struct SessionDetail {
         sendBody.attachments = attachments;
       }
       sendBody.clientMessageId = clientMessageId;
-      // A running turn can only be *steered* while the session is taken over;
-      // the server rejects it otherwise ("read-only until takeover is
-      // enabled"). Without takeover the message still queues for the next turn,
-      // which is what `/messages` already does — so this is a routing choice,
-      // not a gate.
-      const steering = this.takeover && Fmt.statusLive(this.currentStatus());
-      const endpoint = steering ? 'steer' : 'messages';
       await ApiClient.shared.post(`/sessions/${this.sessionId}/runtime/${endpoint}`, sendBody);
       this.pendingParts = [];
       this.pendingCount = 0;
@@ -648,6 +663,9 @@ export struct SessionDetail {
   }
 
   private async interrupt(): Promise<void> {
+    if (!await this.ensureTakeover()) {
+      return;
+    }
     try {
       await ApiClient.shared.post(`/sessions/${this.sessionId}/runtime/interrupt`, new EmptyBody());
       this.toast('Interrupt sent');
@@ -655,6 +673,26 @@ export struct SessionDetail {
       const err = e as Error;
       this.toast(err instanceof ApiError ? err.message : 'interrupt failed');
     }
+  }
+
+  /**
+   * Stops the running turn, then sends what is in the composer as the next
+   * turn. The interrupt is best-effort: if it fails, the send still runs and
+   * reports whatever actually blocks it — a queued message beats a lost one.
+   */
+  private async interruptAndSend(): Promise<void> {
+    if (this.composer.trim().length === 0) {
+      return;
+    }
+    if (!await this.ensureTakeover()) {
+      return;
+    }
+    try {
+      await ApiClient.shared.post(`/sessions/${this.sessionId}/runtime/interrupt`, new EmptyBody());
+    } catch (e) {
+      // Intentional: sendVia() below surfaces the real reason.
+    }
+    await this.sendVia('messages');
   }
 
   private async respond(noticeId: string, actionId: string, input: Object | null = null): Promise<void> {
@@ -1024,16 +1062,51 @@ export struct SessionDetail {
           .onChange((v: string) => {
             this.composer = v;
           })
-        Button('Send')
-          .height(42)
-          .fontSize(Theme.fontSmall)
-          .fontWeight(FontWeight.Medium)
-          .enabled(!this.busy && this.connected)
-          .backgroundColor(Theme.accent)
-          .fontColor(Theme.onAccent)
-          .borderRadius(Theme.radiusPill)
-          .opacity(!this.busy && this.connected ? 1 : 0.4)
-          .onClick(() => this.send())
+        if (Fmt.statusLive(this.currentStatus())) {
+          // While a turn runs, a message has three distinct meanings. Picking
+          // one is the user's call — before this the only path was `steer`, so
+          // there was no way to queue or to stop and send.
+          Button('发送…')
+            .height(42)
+            .fontSize(Theme.fontSmall)
+            .fontWeight(FontWeight.Medium)
+            .enabled(!this.busy && this.connected)
+            .backgroundColor(Theme.accent)
+            .fontColor(Theme.onAccent)
+            .borderRadius(Theme.radiusPill)
+            .opacity(!this.busy && this.connected ? 1 : 0.4)
+            .bindMenu([
+              {
+                value: '排队发送（本轮结束后执行）',
+                action: () => {
+                  void this.sendVia('messages');
+                }
+              },
+              {
+                value: '打断并发送',
+                action: () => {
+                  void this.interruptAndSend();
+                }
+              },
+              {
+                value: '插入当前回合',
+                action: () => {
+                  void this.sendVia('steer');
+                }
+              }
+            ])
+        } else {
+          Button('Send')
+            .height(42)
+            .fontSize(Theme.fontSmall)
+            .fontWeight(FontWeight.Medium)
+            .enabled(!this.busy && this.connected)
+            .backgroundColor(Theme.accent)
+            .fontColor(Theme.onAccent)
+            .borderRadius(Theme.radiusPill)
+            .opacity(!this.busy && this.connected ? 1 : 0.4)
+            .onClick(() => this.send())
+        }
       }
       .width(Theme.gutter)
       .padding({ bottom: 10, top: 8 })
