@@ -34,6 +34,7 @@ from agent_server.core.models import (
     MobileLoginRequestRequest,
     MobileLoginStatusRequest,
     MobileLoginStatusResponse,
+    MobileRefreshRequest,
     OAuthFinalizeRequest,
     OAuthFinalizeResponse,
     OAuthStartResponse,
@@ -505,6 +506,55 @@ async def exchange_mobile_login(
     return MobileLoginExchangeResponse(
         auth=_auth_response(user),
         refreshToken=refresh_token,
+        expiresAt=_iso_from_epoch(int(time.time()) + MOBILE_REFRESH_EXPIRES_IN),
+        serverTime=utc_now(),
+    )
+
+
+@router.post("/auth/refresh", response_model=MobileLoginExchangeResponse)
+async def refresh_mobile_session(
+    payload: MobileRefreshRequest,
+    request: Request,
+    db: Store = Depends(get_store),
+) -> MobileLoginExchangeResponse:
+    """Exchange a mobile refresh token for a fresh access token.
+
+    The mobile login flow hands out a 30-day refresh token, but no route redeemed
+    it, so once the 7-day access token (``DEFAULT_USER_EXPIRES_IN``) lapsed every
+    authenticated call started returning 401 and the user had to log in again.
+    This is that missing redemption step: verify the refresh token, rotate it, and
+    return a new access token in the same shape as ``/auth/mobile-login/exchange``.
+
+    The token is accepted either in the JSON body (``refreshToken``) or as
+    ``Authorization: Bearer <refreshToken>`` so a client interceptor can use the
+    header form without rewriting its request bodies.
+    """
+    refresh_token = (payload.refreshToken or "").strip()
+    if not refresh_token:
+        authorization = request.headers.get("authorization") or ""
+        if authorization.startswith("Bearer "):
+            refresh_token = authorization[len("Bearer "):].strip()
+    token_payload = verify_signed_token(MOBILE_REFRESH_TOKEN_KIND, refresh_token)
+    if token_payload is None or not isinstance(token_payload.get("sub"), str):
+        raise HTTPException(status_code=401, detail="invalid or expired refresh token")
+    try:
+        user = await db.get_user(token_payload["sub"])
+    except KeyError:
+        raise HTTPException(status_code=401, detail="user no longer exists") from None
+    if user.disabled:
+        raise HTTPException(status_code=403, detail="account disabled")
+    rotated_refresh_token = create_signed_token(
+        MOBILE_REFRESH_TOKEN_KIND,
+        {
+            "sub": user.userId,
+            "aud": "agents-anywhere-mobile",
+            "nonce": secrets.token_urlsafe(16),
+        },
+        MOBILE_REFRESH_EXPIRES_IN,
+    )
+    return MobileLoginExchangeResponse(
+        auth=_auth_response(user),
+        refreshToken=rotated_refresh_token,
         expiresAt=_iso_from_epoch(int(time.time()) + MOBILE_REFRESH_EXPIRES_IN),
         serverTime=utc_now(),
     )

@@ -1055,3 +1055,46 @@ def test_mobile_login_exchange_rejects_user_mismatch(tmp_path):
         json={"userId": "other", "loginToken": qr_body["loginToken"]},
     )
     assert exchanged.status_code == 401
+
+
+def test_mobile_refresh_rotates_access_token(tmp_path):
+    client = make_client(tmp_path)
+    token = admin_token(client)
+    qr_body = client.post("/auth/mobile-login/qr", headers=bearer(token)).json()
+    client.post(
+        "/auth/mobile-login/request",
+        json={"userId": user_id(client, "user1"), "loginToken": qr_body["loginToken"], "deviceName": "iPhone"},
+    )
+    client.post(
+        "/auth/mobile-login/confirm",
+        headers=bearer(token),
+        json={"loginToken": qr_body["loginToken"], "approved": True},
+    )
+    exchanged = client.post(
+        "/auth/mobile-login/exchange",
+        json={"userId": user_id(client, "user1"), "loginToken": qr_body["loginToken"]},
+    )
+    assert exchanged.status_code == 200, exchanged.text
+    refresh_token = exchanged.json()["refreshToken"]
+
+    refreshed = client.post("/auth/refresh", json={"refreshToken": refresh_token})
+    assert refreshed.status_code == 200, refreshed.text
+    body = refreshed.json()
+    new_access = body["auth"]["accessToken"]
+    assert new_access
+    assert body["refreshToken"] and body["refreshToken"] != refresh_token
+    me = client.get("/auth/me", headers=bearer(new_access))
+    assert me.status_code == 200, me.text
+    assert me.json()["userId"] == user_id(client, "user1")
+
+    # the rotated refresh token works, and the Authorization-header form works too
+    again = client.post("/auth/refresh", json={"refreshToken": body["refreshToken"]})
+    assert again.status_code == 200, again.text
+    header_form = client.post("/auth/refresh", headers=bearer(again.json()["refreshToken"]), json={})
+    assert header_form.status_code == 200, header_form.text
+    assert header_form.json()["auth"]["accessToken"]
+
+    # an access token is not a refresh token; garbage and empty bodies are rejected
+    assert client.post("/auth/refresh", json={"refreshToken": token}).status_code == 401
+    assert client.post("/auth/refresh", json={"refreshToken": "not-a-token"}).status_code == 401
+    assert client.post("/auth/refresh", json={}).status_code == 401
